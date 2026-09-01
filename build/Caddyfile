@@ -1,0 +1,10 @@
+# Cyto AI — local dev reverse proxy.
+# TLS is intentionally a no-op here; for production, point Caddy at a real
+# domain and it will provision Let's Encrypt certificates automatically.
+
+:80 {
+	reverse_proxy go-api:8080
+
+	# Phase 12: route dashboard paths to the Nuxt app, e.g.
+	# reverse_proxy /dashboard/* web:3000
+}

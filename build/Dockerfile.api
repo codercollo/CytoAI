@@ -1,0 +1,44 @@
+# --- Go build stage ---------------------------------------------------------
+FROM golang:1.25-alpine AS gobuild
+WORKDIR /src
+
+COPY go.mod go.sum ./
+RUN go mod download
+
+COPY . .
+RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /out/cytoai ./cmd/cytoai
+
+# --- runtime stage ----------------------------------------------------------
+# Python base so the Flask ML sidecar can be co-located with the Go API and
+# both processes supervised by supervisord in a single container.
+FROM python:3.12-slim
+
+ENV PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends ca-certificates curl \
+    && rm -rf /var/lib/apt/lists/* \
+    && pip install supervisor \
+    && useradd --no-create-home --uid 10001 cyto
+
+WORKDIR /app
+
+# ML dependencies first for better layer caching, then the full ml/ tree
+# (app code + trained artifacts). .dockerignore keeps .venv / caches / data out.
+COPY ml/requirements.txt /app/ml/requirements.txt
+RUN pip install --no-cache-dir -r /app/ml/requirements.txt
+COPY ml/ /app/ml/
+
+# Go binary + example config (env vars override DSN/ports at runtime).
+COPY --from=gobuild /out/cytoai /app/cytoai
+COPY configs/config.example.yaml /app/configs/config.example.yaml
+
+# Co-located process supervisor.
+COPY build/supervisord.conf /etc/supervisor/conf.d/cytoai.conf
+
+EXPOSE 8080 5001
+
+USER cyto
+
+CMD ["supervisord", "-c", "/etc/supervisor/conf.d/cytoai.conf"]

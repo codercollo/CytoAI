@@ -1,0 +1,19 @@
+# Cyto AI — ML sidecar & data-tooling dependencies
+# Kept intentionally light — no GPU/deep-learning stack needed for MVP models.
+
+# ML sidecar
+flask==3.0.3
+scikit-learn==1.5.1
+joblib==1.4.2
+python-dotenv==1.0.1
+
+# Data handling (training scripts, .mat -> CSV conversion for NASA data)
+pandas==2.2.2
+numpy==1.26.4
+scipy==1.13.1        # needed to read NASA PCoE .mat files via scipy.io.loadmat
+
+# Optional: only needed if you use scripts/fetch_public_data.sh Kaggle downloads
+kaggle==1.6.17
+
+# Testing
+pytest==8.2.2

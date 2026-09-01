@@ -1,0 +1,49 @@
+services:
+  postgres:
+    image: postgres:18
+    environment:
+      POSTGRES_USER: cyto
+      POSTGRES_PASSWORD: cyto
+      POSTGRES_DB: cytoai
+    ports:
+      - "5433:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U cyto -d cytoai"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # Migrations are applied separately against the published port, e.g. `make migrate`.
+  # The Go API and the Python ML sidecar now run together in this single container.
+  api:
+    build:
+      context: ..
+      dockerfile: build/Dockerfile.api
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      CYTOAI_POSTGRES_DSN: postgres://cyto:cyto@postgres:5432/cytoai?sslmode=disable
+      CYTOAI_ML_BASE_URL: http://localhost:5001
+      CYTOAI_HTTP_PORT: "8080"
+    ports:
+      - "8080:8080"
+    healthcheck:
+      # /readyz returns 200 only once Postgres and both ML models are ready.
+      test: ["CMD", "curl", "-fsS", "http://localhost:8080/readyz"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  web:
+    build:
+      context: ..
+      dockerfile: build/Dockerfile.web
+    depends_on:
+      api:
+        condition: service_healthy
+    environment:
+      # Nuxt's Nitro proxy forwards same-origin /v1/* to this origin.
+      NUXT_API_BASE: http://api:8080
+    ports:
+      - "3000:3000"

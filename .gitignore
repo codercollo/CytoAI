@@ -1,0 +1,27 @@
+# ML data — large/derived, not committed (except ml/data/sample/)
+ml/data/battery/**
+ml/data/repayment/**
+ml/data/synthetic/**
+!ml/data/**/.gitkeep
+ml/artifacts/*.joblib
+
+# Go
+/cmd/**/cytoai
+*.exe
+
+# Node / Nuxt
+web/node_modules/
+web/.nuxt/
+web/.output/
+
+# Python
+ml/**/__pycache__/
+ml/.venv/
+*.pyc
+
+# Config secrets
+configs/config.local.yaml
+
+# OS
+.DS_Store
+.env

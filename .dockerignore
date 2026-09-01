@@ -1,0 +1,23 @@
+# Keep Docker build contexts small and free of machine-specific state.
+.git
+.gitignore
+
+# Go build artifacts
+*.exe
+/cytoai
+
+# Python virtualenv / caches / heavy data (artifacts are intentionally kept)
+ml/.venv
+ml/**/__pycache__
+ml/data/battery
+ml/data/repayment
+ml/data/synthetic
+
+# Node / Nuxt
+web/node_modules
+web/.nuxt
+web/.output
+
+# Local secrets/config (never belong in Docker build contexts)
+.env
+configs/config.local.yaml

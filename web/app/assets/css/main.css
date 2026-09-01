@@ -1,0 +1,31 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, monospace;
+  --color-cyto-bg: #080c14;
+  --color-cyto-card: #0e1626;
+  --color-cyto-surface: #151f32;
+  --color-cyto-border: #1e293b;
+}
+
+@layer base {
+  html {
+    color-scheme: dark;
+  }
+  body {
+    background-color: #080c14;
+    color: #f1f5f9;
+  }
+}
+
+@layer components {
+  .glass-card {
+    background-color: #0e1626;
+    border: 1px solid #1e293b;
+    border-radius: 0.75rem;
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -2px rgba(0, 0, 0, 0.1);
+    padding: 1.5rem;
+  }
+}
+

@@ -1,0 +1,14 @@
+# Cyto AI — example configuration.
+#
+# Copy this file to configs/config.local.yaml and fill in real values.
+# configs/config.local.yaml is gitignored and must never be committed.
+
+postgres_dsn: "postgres://cyto:change-me@localhost:5432/cytoai?sslmode=disable"
+ml_base_url: "http://localhost:5001"
+http_port: 8080
+log_level: "info"
+weights:
+  bhi: 0.5
+  rri: 0.5
+cors_allowed_origins:
+  - "http://localhost:3000"

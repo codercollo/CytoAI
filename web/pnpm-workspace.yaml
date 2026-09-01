@@ -1,0 +1,6 @@
+# pnpm 11 blocks dependency build scripts by default. esbuild needs its
+# postinstall script to fetch the platform binary; allow dependency builds so
+# the image can bundle the dashboard. (Tighten to `allowBuilds: [esbuild]`
+# if preferred.)
+dangerouslyAllowAllBuilds: true
+

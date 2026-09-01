@@ -1,0 +1,19 @@
+{
+  "roc_auc": 0.72,
+  "base_default_rate": 0.25,
+  "n_train": 160,
+  "n_test": 40,
+  "coefficients": {
+    "on_time_ratio": -1.1540949105030713,
+    "avg_days_late": -0.37994940993027093,
+    "payment_cadence_proxy": 0.16745021812223818,
+    "loan_to_battery_value_ratio": 0.2634538139066895,
+    "tenure_days": 0.0,
+    "telemetry_cadence_proxy": -0.18825175739273922
+  },
+  "feature_notes": {
+    "payment_cadence_proxy": "proxy for usage/income derived from repayment cadence; NOT telemetry-confirmed battery swaps",
+    "loan_to_battery_value_ratio": "principal_kes / battery_value_kes (from ml/data/synthetic/loans.csv)",
+    "telemetry_cadence_proxy": "swap/usage regularity: 0.5*cv(reading gaps) + 0.5*cv(distance_km_since_last) from telemetry_readings (see scoring_service.py)"
+  }
+}

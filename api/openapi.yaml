@@ -1,0 +1,489 @@
+openapi: 3.0.3
+info:
+  title: Cyto AI API
+  version: 0.1.0
+  description: >
+    CytoAI is a neutral risk-scoring layer for IoT-connected, pay-as-you-go
+    asset financing, starting with electric motorcycle batteries. MVP scoring
+    + ingestion API (spec.md §6). Auth is a partner API key in
+    `Authorization: Bearer <key>`, hashed at rest. Ingestion accepts either a
+    JSON array or a raw CSV body (`text/csv`).
+servers:
+  - url: http://localhost:8080
+security:
+  - bearerAuth: []
+
+paths:
+  /healthz:
+    get:
+      security: []
+      summary: Liveness probe
+      responses:
+        "200":
+          description: always ok
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status]
+                properties:
+                  status: { type: string, enum: [ok] }
+
+  /readyz:
+    get:
+      security: []
+      summary: Readiness probe (Postgres + ML sidecar)
+      responses:
+        "200":
+          description: all dependencies ready
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ReadyResponse" }
+        "503":
+          description: one or more dependencies unavailable
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ReadyResponse" }
+
+  /v1/telematics:
+    post:
+      summary: Ingest telemetry readings (JSON array or CSV)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: array
+              items: { $ref: "#/components/schemas/TelemetryReading" }
+          text/csv:
+            schema: { type: string }
+      responses:
+        "200":
+          description: rows inserted
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/IngestResponse" }
+        "400":
+          description: malformed rows (whole batch rejected)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+
+  /v1/repayments:
+    post:
+      summary: Ingest repayment events (JSON array or CSV)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: array
+              items: { $ref: "#/components/schemas/RepaymentEvent" }
+          text/csv:
+            schema: { type: string }
+      responses:
+        "200":
+          description: rows inserted
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/IngestResponse" }
+        "400":
+          description: malformed rows (whole batch rejected)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+
+  /v1/score:
+    post:
+      summary: Recompute and persist a score for a rider/battery
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ScoreRequest" }
+      responses:
+        "200":
+          description: score, or insufficient-data flag (never a fabricated low score)
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - { $ref: "#/components/schemas/ScoreResponse" }
+                  - { $ref: "#/components/schemas/InsufficientData" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+
+  /v1/score/{rider_id}:
+    get:
+      summary: Fetch the latest persisted score for a rider
+      parameters:
+        - { name: rider_id, in: path, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: latest score
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Score" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+
+  /v1/portfolio:
+    get:
+      summary: The authenticated partner's full scored portfolio (paginated)
+      parameters:
+        - { name: limit, in: query, schema: { type: integer, default: 100 } }
+        - { name: offset, in: query, schema: { type: integer, default: 0 } }
+      responses:
+        "200":
+          description: portfolio page
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PortfolioResponse" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+
+  /v1/riders:
+    get:
+      summary: List the authenticated partner's riders (paginated)
+      parameters:
+        - { name: limit, in: query, schema: { type: integer, default: 100 } }
+        - { name: offset, in: query, schema: { type: integer, default: 0 } }
+      responses:
+        "200":
+          description: rider list
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/RiderListResponse" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+    post:
+      summary: Create a rider, optionally with a battery + loan atomically
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/RiderCreateRequest" }
+      responses:
+        "201":
+          description: created rider
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/RiderResponse" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+
+  /v1/riders/{rider_id}:
+    get:
+      summary: Fetch a rider's identity, linked battery/loan, latest score, and factors
+      parameters:
+        - { name: rider_id, in: path, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: rider detail (latest_score is null when never scored)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/RiderResponse" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: API key
+
+  responses:
+    BadRequest:
+      description: invalid request
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorResponse" }
+    Unauthorized:
+      description: missing/invalid API key
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorResponse" }
+    NotFound:
+      description: resource not found
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorResponse" }
+    Conflict:
+      description: duplicate external reference
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorResponse" }
+    RateLimited:
+      description: rate limit exceeded
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorResponse" }
+
+  schemas:
+    TelemetryReading:
+      type: object
+      required: [battery_id, reading_at]
+      properties:
+        battery_id: { type: string }
+        reading_at: { type: string, format: date-time }
+        state_of_charge: { type: number }
+        voltage: { type: number }
+        temperature_c: { type: number }
+        cycle_count: { type: integer }
+        depth_of_discharge: { type: number }
+        distance_km_since_last: { type: number }
+
+    RepaymentEvent:
+      type: object
+      required: [loan_id, due_date]
+      properties:
+        loan_id: { type: string }
+        due_date: { type: string, format: date }
+        paid_date: { type: string, format: date }
+        amount_due_kes: { type: number }
+        amount_paid_kes: { type: number }
+        status: { type: string, enum: [on_time, late, missed, partial] }
+
+    ScoreRequest:
+      type: object
+      required: [rider_id, battery_id]
+      properties:
+        rider_id: { type: string }
+        battery_id: { type: string }
+
+    ScoreResponse:
+      type: object
+      required: [rider_id, battery_id, battery_health_index, repayment_risk_index, cyto_score]
+      properties:
+        rider_id: { type: string }
+        battery_id: { type: string }
+        battery_health_index: { type: number }
+        repayment_risk_index: { type: number }
+        cyto_score: { type: number }
+        battery_model_version: { type: string }
+        repayment_model_version: { type: string }
+        scored_at: { type: string, format: date-time }
+        anomaly_flags:
+          type: array
+          description: Non-gating fraud/anomaly findings surfaced for lender review (never a rejection).
+          items: { $ref: "#/components/schemas/AnomalyFlag" }
+
+    InsufficientData:
+      type: object
+      required: [insufficient_data, reason]
+      properties:
+        insufficient_data: { type: boolean }
+        reason: { type: string }
+        rider_id: { type: string }
+        battery_id: { type: string }
+
+    Score:
+      type: object
+      properties:
+        id: { type: integer, format: int64 }
+        rider_id: { type: string }
+        battery_id: { type: string }
+        battery_health_index: { type: number }
+        repayment_risk_index: { type: number }
+        cyto_score: { type: number }
+        scored_at: { type: string, format: date-time }
+        model_version: { type: string }
+        anomaly_flags:
+          type: array
+          description: Non-gating fraud/anomaly findings surfaced for lender review (never a rejection).
+          items: { $ref: "#/components/schemas/AnomalyFlag" }
+
+    AnomalyFlag:
+      type: object
+      description: A single non-gating fraud/anomaly finding.
+      required: [entity_type, entity_id, rule_or_model, severity, reason]
+      properties:
+        entity_type:
+          type: string
+          description: Either `telemetry_reading` or `repayment_event`.
+        entity_id:
+          type: string
+          description: The id of the flagged telemetry reading or repayment event.
+        rule_or_model:
+          type: string
+          description: Stable rule identifier (for example `soc_out_of_bounds`).
+        severity:
+          type: string
+          description: Severity level (`high` or `medium`).
+        reason:
+          type: string
+          description: Human-readable explanation of the finding.
+
+    PortfolioResponse:
+      type: object
+      properties:
+        scores:
+          type: array
+          items: { $ref: "#/components/schemas/Score" }
+        limit: { type: integer }
+        offset: { type: integer }
+
+    IngestResponse:
+      type: object
+      required: [inserted]
+      properties:
+        inserted: { type: integer, format: int64 }
+
+    ReadyResponse:
+      type: object
+      required: [status]
+      properties:
+        status: { type: string, enum: [ready, not_ready] }
+        postgres:
+          type: object
+          properties:
+            status: { type: string }
+            error: { type: string }
+        ml_sidecar:
+          type: object
+          properties:
+            status: { type: string }
+            battery_model_loaded: { type: boolean }
+            repayment_model_loaded: { type: boolean }
+            error: { type: string }
+
+    RiderCreateRequest:
+      type: object
+      required: [external_ref]
+      properties:
+        external_ref: { type: string }
+        battery: { $ref: "#/components/schemas/BatteryCreateRequest" }
+        loan: { $ref: "#/components/schemas/LoanCreateRequest" }
+
+    BatteryCreateRequest:
+      type: object
+      properties:
+        external_ref: { type: string }
+        manufacturer: { type: string }
+        rated_capacity_wh: { type: number }
+        commissioned_at: { type: string, format: date-time }
+
+    LoanCreateRequest:
+      type: object
+      properties:
+        external_ref: { type: string }
+        principal_kes: { type: number }
+        battery_value_kes: { type: number }
+        term_months: { type: integer }
+        daily_installment_kes: { type: number }
+        started_at: { type: string, format: date }
+
+    RiderListResponse:
+      type: object
+      required: [riders, limit, offset]
+      properties:
+        riders:
+          type: array
+          items: { $ref: "#/components/schemas/RiderResponse" }
+        limit: { type: integer }
+        offset: { type: integer }
+
+    RiderResponse:
+      type: object
+      required: [id, registration_status]
+      properties:
+        id: { type: string }
+        external_ref: { type: string }
+        onboarded_at: { type: string, format: date-time }
+        registration_status: { type: string, enum: [registered, linked] }
+        battery: { $ref: "#/components/schemas/BatteryInfo" }
+        loan: { $ref: "#/components/schemas/LoanInfo" }
+        latest_score: { $ref: "#/components/schemas/ScoreSummary" }
+        factors: { $ref: "#/components/schemas/Factors" }
+        anomaly_flags:
+          type: array
+          description: Non-gating fraud/anomaly findings surfaced for lender review (never a rejection).
+          items: { $ref: "#/components/schemas/AnomalyFlag" }
+
+    BatteryInfo:
+      type: object
+      required: [id]
+      properties:
+        id: { type: string }
+        external_ref: { type: string }
+        manufacturer: { type: string }
+        rated_capacity_wh: { type: number }
+        commissioned_at: { type: string, format: date-time }
+
+    LoanInfo:
+      type: object
+      required: [id]
+      properties:
+        id: { type: string }
+        external_ref: { type: string }
+        principal_kes: { type: number }
+        battery_value_kes: { type: number }
+        term_months: { type: integer }
+        daily_installment_kes: { type: number }
+        started_at: { type: string, format: date }
+
+    ScoreSummary:
+      type: object
+      required: [id, battery_health_index, repayment_risk_index, cyto_score]
+      properties:
+        id: { type: integer, format: int64 }
+        battery_id: { type: string }
+        battery_health_index: { type: number }
+        repayment_risk_index: { type: number }
+        cyto_score: { type: number }
+        scored_at: { type: string, format: date-time }
+        model_version: { type: string }
+
+    Factors:
+      type: object
+      required: [battery, repayment]
+      properties:
+        battery:
+          type: object
+          required: [cycle_count, avg_depth_of_discharge, avg_temperature_c, age_days, charge_rate_variance]
+          properties:
+            cycle_count: { type: number }
+            avg_depth_of_discharge: { type: number }
+            avg_temperature_c: { type: number }
+            age_days: { type: number }
+            charge_rate_variance: { type: number }
+        repayment:
+          type: object
+          required: [on_time_ratio, avg_days_late, payment_cadence_proxy, loan_to_battery_value_ratio, tenure_days, telemetry_cadence_proxy]
+          properties:
+            on_time_ratio: { type: number }
+            avg_days_late: { type: number }
+            payment_cadence_proxy: { type: number }
+            loan_to_battery_value_ratio: { type: number }
+            tenure_days: { type: number }
+            telemetry_cadence_proxy: { type: number }
+
+    ErrorResponse:
+      type: object
+      required: [error]
+      properties:
+        error: { type: string }
+        message: { type: string }
+        details:
+          type: object
+          properties:
+            row_errors:
+              type: array
+              items:
+                type: object
+                properties:
+                  row: { type: integer }
+                  field: { type: string }
+                  error: { type: string }
+
