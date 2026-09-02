@@ -47,6 +47,16 @@ type RepaymentFeatures struct {
 	// TelemetryCadenceProxy is Feature A's swap/usage regularity signal,
 	// derived from telemetry reading_at intervals + distance_km_since_last.
 	TelemetryCadenceProxy float64 `json:"telemetry_cadence_proxy"`
+	// BatteryStressProfile is a swap_network-only input: how much hotter and
+	// more deeply-discharged this rider returns batteries vs the fleet mean
+	// (z-score-vs-fleet profile, floored at 0). leased_fixed scores leave it
+	// at 0 (neutral). It is plumbed to the sidecar but carries no trained
+	// weight until the Phase 6 RRI retrain.
+	BatteryStressProfile float64 `json:"battery_stress_profile"`
+	// FinancingModel routes the sidecar to the lease (6-feature) vs swap
+	// (7-feature) RRI artifact so leased_fixed scores are unaffected by the
+	// swap-network stress feature.
+	FinancingModel string `json:"financing_model,omitempty"`
 }
 
 // BatteryPrediction is the decoded response from POST /predict/battery.
@@ -209,6 +219,20 @@ type RepaymentAnomalyRecord struct {
 	Status        *string  `json:"status,omitempty"`
 }
 
+// SwapAnomalyRecord is the raw swap_event sent to /predict/anomaly.
+type SwapAnomalyRecord struct {
+	ID                       int64    `json:"id,omitempty"`
+	RiderID                  string   `json:"rider_id"`
+	BatteryID                string   `json:"battery_id"`
+	StationID                *string  `json:"station_id,omitempty"`
+	SwappedAt                string   `json:"swapped_at"`
+	ReturnedStateOfCharge    *float64 `json:"returned_state_of_charge,omitempty"`
+	ReturnedTemperatureC     *float64 `json:"returned_temperature_c,omitempty"`
+	ReturnedCycleCount       *int     `json:"returned_cycle_count,omitempty"`
+	ReturnedDepthOfDischarge *float64 `json:"returned_depth_of_discharge,omitempty"`
+	DistanceKmSinceLastSwap  *float64 `json:"distance_km_since_last_swap,omitempty"`
+}
+
 // AnomalyFlag is a single non-gating fraud/anomaly finding from the sidecar.
 type AnomalyFlag struct {
 	EntityType  string `json:"entity_type"`
@@ -230,6 +254,11 @@ func (c *MLClient) DetectTelemetryAnomalies(ctx context.Context, records []Telem
 // DetectRepaymentAnomalies calls POST /predict/anomaly for repayment records.
 func (c *MLClient) DetectRepaymentAnomalies(ctx context.Context, records []RepaymentAnomalyRecord) ([]AnomalyFlag, error) {
 	return c.detectAnomalies(ctx, map[string]any{"telemetry": []any{}, "repayments": records})
+}
+
+// DetectSwapAnomalies calls POST /predict/anomaly for swap_events.
+func (c *MLClient) DetectSwapAnomalies(ctx context.Context, records []SwapAnomalyRecord) ([]AnomalyFlag, error) {
+	return c.detectAnomalies(ctx, map[string]any{"telemetry": []any{}, "repayments": []any{}, "swaps": records})
 }
 
 func (c *MLClient) detectAnomalies(ctx context.Context, payload any) ([]AnomalyFlag, error) {

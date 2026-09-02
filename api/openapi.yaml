@@ -97,6 +97,32 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "429": { $ref: "#/components/responses/RateLimited" }
 
+  /v1/swaps:
+    post:
+      summary: Ingest swap events (JSON array or CSV)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: array
+              items: { $ref: "#/components/schemas/SwapEvent" }
+          text/csv:
+            schema: { type: string }
+      responses:
+        "200":
+          description: rows inserted
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/IngestResponse" }
+        "400":
+          description: malformed rows (whole batch rejected)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+
   /v1/score:
     post:
       summary: Recompute and persist a score for a rider/battery
@@ -196,6 +222,24 @@ paths:
         "404": { $ref: "#/components/responses/NotFound" }
         "429": { $ref: "#/components/responses/RateLimited" }
 
+  /v1/operator/stress-flags:
+    get:
+      summary: Swap-network stress flags for the operator's fleet (rider-level, non-gating)
+      responses:
+        "200":
+          description: fleet stress flags (empty when the partner has no swap_events or the detector is disabled)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  flags:
+                    type: array
+                    description: Rider-level high-stress swap findings (thermal/deep-discharge), distinct from lender-facing risk scores.
+                    items: { $ref: "#/components/schemas/AnomalyFlag" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+
 components:
   securitySchemes:
     bearerAuth:
@@ -257,17 +301,29 @@ components:
 
     ScoreRequest:
       type: object
-      required: [rider_id, battery_id]
+      required: [rider_id]
       properties:
         rider_id: { type: string }
-        battery_id: { type: string }
+        battery_id:
+          type: string
+          description: Required for `leased_fixed` loans. Omit for `swap_network` loans (no single collateral battery).
 
     ScoreResponse:
       type: object
-      required: [rider_id, battery_id, battery_health_index, repayment_risk_index, cyto_score]
+      required: [rider_id, battery_health_index, repayment_risk_index, cyto_score]
       properties:
         rider_id: { type: string }
-        battery_id: { type: string }
+        battery_id:
+          type: string
+          description: The collateral battery for `leased_fixed`; empty for `swap_network`.
+        financing_model:
+          type: string
+          enum: [leased_fixed, swap_network]
+          description: How the BHI is derived (per-battery telemetry vs fleet swap data).
+        bhi_context:
+          type: string
+          enum: [rider_battery, fleet]
+          description: Whether `battery_health_index` describes this rider's battery (`rider_battery`) or the fleet/pool the rider draws from (`fleet`).
         battery_health_index: { type: number }
         repayment_risk_index: { type: number }
         cyto_score: { type: number }
@@ -294,6 +350,12 @@ components:
         id: { type: integer, format: int64 }
         rider_id: { type: string }
         battery_id: { type: string }
+        financing_model:
+          type: string
+          enum: [leased_fixed, swap_network]
+        bhi_context:
+          type: string
+          enum: [rider_battery, fleet]
         battery_health_index: { type: number }
         repayment_risk_index: { type: number }
         cyto_score: { type: number }
@@ -311,7 +373,7 @@ components:
       properties:
         entity_type:
           type: string
-          description: Either `telemetry_reading` or `repayment_event`.
+          description: Either `telemetry_reading`, `repayment_event`, or `rider` (swap stress).
         entity_id:
           type: string
           description: The id of the flagged telemetry reading or repayment event.
@@ -339,6 +401,21 @@ components:
       required: [inserted]
       properties:
         inserted: { type: integer, format: int64 }
+
+    SwapEvent:
+      type: object
+      required: [rider_id, battery_id, swapped_at]
+      properties:
+        id: { type: integer, format: int64 }
+        rider_id: { type: string }
+        battery_id: { type: string }
+        station_id: { type: string }
+        swapped_at: { type: string, format: date-time }
+        returned_state_of_charge: { type: number }
+        returned_temperature_c: { type: number }
+        returned_cycle_count: { type: integer }
+        returned_depth_of_discharge: { type: number }
+        distance_km_since_last_swap: { type: number }
 
     ReadyResponse:
       type: object
@@ -432,6 +509,10 @@ components:
         term_months: { type: integer }
         daily_installment_kes: { type: number }
         started_at: { type: string, format: date }
+        financing_model:
+          type: string
+          enum: [leased_fixed, swap_network]
+          description: `leased_fixed` collateralizes a single battery; `swap_network` finances access to a shared fleet.
 
     ScoreSummary:
       type: object

@@ -1,10 +1,16 @@
 <script setup lang="ts">
-import type { Score, PortfolioResponse } from "~/composables/useCytoApi";
+import type { Score, PortfolioResponse, AnomalyFlag, StressFlagsResponse } from "~/composables/useCytoApi";
 
 const api = useCytoApi();
 const req = useCytoRequest<PortfolioResponse>();
 const scores = ref<Score[]>([]);
 const hasData = ref(false);
+
+// Operator-facing fleet stress (swap-network). Kept separate from the
+// lender-facing portfolio because it means something different: battery-pool
+// health for the operator, not repayment risk for a lender.
+const stressReq = useCytoRequest<StressFlagsResponse>();
+const stressFlags = ref<AnomalyFlag[]>([]);
 
 // Bumped by the upload page after a rescore-all run; refresh if we're mounted.
 const portfolioRefresh = useState<number>("portfolio_refresh", () => 0);
@@ -17,8 +23,19 @@ async function load() {
   }
 }
 
-onMounted(load);
-watch(portfolioRefresh, () => load());
+async function loadStress() {
+  const res = await stressReq.run(() => api.operatorStressFlags());
+  if (res) stressFlags.value = res.flags || [];
+}
+
+onMounted(() => {
+  load();
+  loadStress();
+});
+watch(portfolioRefresh, () => {
+  load();
+  loadStress();
+});
 
 const errorMessage = computed(() => req.error.value?.message || "");
 
@@ -204,6 +221,51 @@ function riskClass(v: number): string {
       <div v-else-if="req.pending" class="px-5 py-10 text-center text-slate-400">
         Loading portfolio assessments…
       </div>
+    </div>
+
+    <!-- Operator view: swap-network fleet stress (distinct from lender risk) -->
+    <div class="glass-card mt-6 p-5 border border-slate-800">
+      <div class="mb-4 flex items-center justify-between gap-4">
+        <div>
+          <h2 class="text-sm font-semibold text-slate-200 uppercase tracking-wider">
+            Swap-Network Fleet Stress
+          </h2>
+          <p class="mt-1 text-xs text-slate-400">
+            Operator-facing high-stress patterns across the battery pool
+            (thermal / deep-discharge). Separate from lender credit risk.
+          </p>
+        </div>
+        <button
+          class="shrink-0 rounded-lg border border-slate-700 px-3 py-1.5 text-xs font-semibold text-slate-300 transition-colors hover:bg-slate-800/50"
+          @click="loadStress"
+        >
+          Refresh
+        </button>
+      </div>
+
+      <div v-if="stressFlags.length === 0" class="py-4 text-xs text-slate-500">
+        No high-stress swap patterns detected in the fleet.
+      </div>
+      <ul v-else class="divide-y divide-slate-800 text-xs">
+        <li
+          v-for="(f, i) in stressFlags"
+          :key="i"
+          class="flex flex-wrap items-center gap-2 py-3"
+        >
+          <span class="font-mono text-indigo-400">{{ short(f.entity_id) }}</span>
+          <span
+            class="rounded border px-2 py-0.5 text-[11px] font-semibold font-mono"
+            :class="
+              f.severity === 'high'
+                ? 'text-rose-400 border-rose-500/20 bg-rose-500/10'
+                : 'text-amber-400 border-amber-500/20 bg-amber-500/10'
+            "
+          >
+            {{ f.rule_or_model }}
+          </span>
+          <span class="text-slate-400">{{ f.reason }}</span>
+        </li>
+      </ul>
     </div>
   </div>
 </template>

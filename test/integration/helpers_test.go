@@ -38,6 +38,15 @@ func seedLoan(t *testing.T, pool *pgxpool.Pool, riderID, batteryID, ref string) 
 	return id
 }
 
+func seedSwapLoan(t *testing.T, pool *pgxpool.Pool, riderID, ref string) string {
+	t.Helper()
+	var id string
+	if err := pool.QueryRow(context.Background(), `INSERT INTO loans (external_ref, rider_id, battery_id, principal_kes, battery_value_kes, financing_model) VALUES ($1, $2, NULL, 300000, 150000, 'swap_network') RETURNING id::text`, ref, riderID).Scan(&id); err != nil {
+		t.Fatalf("seed swap loan: %v", err)
+	}
+	return id
+}
+
 func seedTelemetry(t *testing.T, pool *pgxpool.Pool, batteryID string, n int) {
 	t.Helper()
 	ctx := context.Background()

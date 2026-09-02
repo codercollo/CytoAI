@@ -36,3 +36,34 @@ func (s *Store) RiderBatteryPairsForPartner(ctx context.Context, partnerID strin
 	}
 	return out, nil
 }
+
+// SwapNetworkRiderIDsForPartner returns every distinct rider whose financing
+// model is swap_network (no collateral battery_id), one row per rider. These
+// are excluded from RiderBatteryPairsForPartner because they have no battery to
+// pair on.
+func (s *Store) SwapNetworkRiderIDsForPartner(ctx context.Context, partnerID string) ([]string, error) {
+	rows, err := s.pool.Query(ctx, `
+		SELECT DISTINCT l.rider_id::text
+		FROM loans l
+		JOIN riders r ON r.id = l.rider_id
+		WHERE r.partner_id = $1
+		  AND l.financing_model = 'swap_network'
+		ORDER BY l.rider_id::text`, partnerID)
+	if err != nil {
+		return nil, fmt.Errorf("queries: swap network rider ids: %w", err)
+	}
+	defer rows.Close()
+
+	var out []string
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, fmt.Errorf("queries: scan swap rider id: %w", err)
+		}
+		out = append(out, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("queries: iterate swap rider ids: %w", err)
+	}
+	return out, nil
+}

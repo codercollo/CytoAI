@@ -56,8 +56,15 @@ from sklearn.preprocessing import StandardScaler
 # is run directly (python ml/training/train_repayment_model.py).
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from ml.app.services.scoring_service import compute_telemetry_cadence_proxy  # noqa: E402
+from ml.app.services.scoring_service import (  # noqa: E402
+    compute_battery_stress_profile,
+    compute_swap_cadence_proxy,
+    compute_telemetry_cadence_proxy,
+)
 
+# battery_stress_profile (swap_network-only) is now part of the trained feature
+# set: swap_network riders get it from their swap_events (deviation from fleet
+# returned temp/DoD); leased_fixed rows keep it at 0.0 (neutral).
 FEATURE_NAMES = [
     "on_time_ratio",
     "avg_days_late",
@@ -65,7 +72,13 @@ FEATURE_NAMES = [
     "loan_to_battery_value_ratio",
     "tenure_days",
     "telemetry_cadence_proxy",
+    "battery_stress_profile",
 ]
+
+# The lease model keeps the pre-pivot 6-feature set so leased_fixed scores are
+# mathematically unaffected by the swap-network stress feature (Phase 6
+# follow-up: a single shared model perturbs lease coefficients).
+LEASE_FEATURE_NAMES = FEATURE_NAMES[:-1]
 SPLIT_FRACTION = 0.7
 # A loan is labeled "future default" only if it has at least this many
 # fully-missed payments in the trailing window (see module docstring).
@@ -80,8 +93,14 @@ def _days_late(row: pd.Series) -> float:
     return max((paid - due).days, 0)
 
 
-def build_features(events: pd.DataFrame, loans: pd.DataFrame, telemetry: pd.DataFrame) -> pd.DataFrame:
+def build_features(events: pd.DataFrame, loans: pd.DataFrame, telemetry: pd.DataFrame, swaps: pd.DataFrame) -> pd.DataFrame:
     events = events.copy()
+    swaps = swaps.copy()
+    swaps["swapped_at"] = pd.to_datetime(swaps["swapped_at"])
+    # Fleet reference for the rider battery-stress feature (single synthetic
+    # operator => the whole fleet is all swap_events).
+    fleet_swap_records = swaps.to_dict("records")
+
     events["due_date"] = pd.to_datetime(events["due_date"])
     events["paid_date"] = pd.to_datetime(events.get("paid_date"))
     events["days_late"] = events.apply(_days_late, axis=1)
@@ -92,9 +111,10 @@ def build_features(events: pd.DataFrame, loans: pd.DataFrame, telemetry: pd.Data
     events = events.drop(columns=["rider_id", "battery_id"], errors="ignore")
 
     # Bring in loan principal + battery value for the real LTV ratio, plus
-    # battery_id so we can join telemetry for the swap-cadence feature.
+    # rider_id/battery_id for cadence joins, and financing_model to branch the
+    # cadence source between telemetry (lease) and swap_events (swap network).
     events = events.merge(
-        loans[["loan_id", "battery_id", "principal_kes", "battery_value_kes"]],
+        loans[["loan_id", "rider_id", "battery_id", "principal_kes", "battery_value_kes", "financing_model"]],
         on="loan_id",
         how="left",
     )
@@ -135,20 +155,35 @@ def build_features(events: pd.DataFrame, loans: pd.DataFrame, telemetry: pd.Data
 
         tenure_days = (history["due_date"].max() - history["due_date"].min()).days
 
-        # telemetry_cadence_proxy: swap/usage regularity from the battery's
-        # telemetry up to the END of the history window (no future leakage).
+        # telemetry_cadence_proxy: swap/usage regularity up to the END of the
+        # history window (no future leakage). leased_fixed derives it from the
+        # battery's telemetry; swap_network derives it from the rider's swap
+        # event timestamps (same cadence function, different input source).
         history_end = history["due_date"].max()
-        battery_id = history["battery_id"].iloc[0]
-        if pd.notna(battery_id):
-            battery_telemetry = telemetry[
-                (telemetry["battery_id"] == battery_id)
-                & (telemetry["reading_at"] <= history_end)
+        rider_id = history["rider_id"].iloc[0]
+        financing_model = str(history["financing_model"].iloc[0]) if pd.notna(history["financing_model"].iloc[0]) else "leased_fixed"
+
+        if financing_model == "swap_network":
+            rider_swaps = swaps[
+                (swaps["rider_id"] == rider_id)
+                & (swaps["swapped_at"] <= history_end)
             ]
-            telemetry_cadence_proxy = compute_telemetry_cadence_proxy(
-                battery_telemetry[["reading_at", "distance_km_since_last"]].to_dict("records")
-            )
+            rider_swap_records = rider_swaps.to_dict("records")
+            telemetry_cadence_proxy = compute_swap_cadence_proxy(rider_swap_records)
+            battery_stress_profile = compute_battery_stress_profile(rider_swap_records, fleet_swap_records)
         else:
-            telemetry_cadence_proxy = 0.0
+            battery_id = history["battery_id"].iloc[0]
+            if pd.notna(battery_id):
+                battery_telemetry = telemetry[
+                    (telemetry["battery_id"] == battery_id)
+                    & (telemetry["reading_at"] <= history_end)
+                ]
+                telemetry_cadence_proxy = compute_telemetry_cadence_proxy(
+                    battery_telemetry[["reading_at", "distance_km_since_last"]].to_dict("records")
+                )
+            else:
+                telemetry_cadence_proxy = 0.0
+            battery_stress_profile = 0.0
 
         # Label: a real "stopped paying" signal, not a single late day.
         n_missed = int((future["status"] == "missed").sum())
@@ -163,6 +198,8 @@ def build_features(events: pd.DataFrame, loans: pd.DataFrame, telemetry: pd.Data
                 "loan_to_battery_value_ratio": loan_to_battery_value_ratio,
                 "tenure_days": tenure_days,
                 "telemetry_cadence_proxy": telemetry_cadence_proxy,
+                "battery_stress_profile": battery_stress_profile,
+                "financing_model": financing_model,
                 "future_default": future_default,
             }
         )
@@ -173,8 +210,8 @@ def build_features(events: pd.DataFrame, loans: pd.DataFrame, telemetry: pd.Data
     return df
 
 
-def train(df: pd.DataFrame) -> tuple[LogisticRegression, StandardScaler, dict]:
-    X = df[FEATURE_NAMES]
+def train(df: pd.DataFrame, feature_names: list[str]) -> tuple[LogisticRegression, StandardScaler, dict]:
+    X = df[feature_names]
     y = df["future_default"]
     X_train, X_test, y_train, y_test = train_test_split(
         X, y, test_size=0.2, random_state=42, stratify=y if y.nunique() > 1 else None
@@ -193,11 +230,12 @@ def train(df: pd.DataFrame) -> tuple[LogisticRegression, StandardScaler, dict]:
         "base_default_rate": float(y.mean()),
         "n_train": int(len(X_train)),
         "n_test": int(len(X_test)),
-        "coefficients": dict(zip(FEATURE_NAMES, model.coef_[0].tolist())),
+        "coefficients": dict(zip(feature_names, model.coef_[0].tolist())),
         "feature_notes": {
             "payment_cadence_proxy": "proxy for usage/income derived from repayment cadence; NOT telemetry-confirmed battery swaps",
             "loan_to_battery_value_ratio": "principal_kes / battery_value_kes (from ml/data/synthetic/loans.csv)",
-            "telemetry_cadence_proxy": "swap/usage regularity: 0.5*cv(reading gaps) + 0.5*cv(distance_km_since_last) from telemetry_readings (see scoring_service.py)",
+            "telemetry_cadence_proxy": "swap/usage regularity: 0.5*cv(reading gaps) + 0.5*cv(distance_km_since_last); lease from telemetry_readings, swap from swap_events (see scoring_service.py)",
+            "battery_stress_profile": "swap_network-only: z-score of rider returned temp/DoD vs fleet average; 0.0 for leased_fixed (synthetic, assumed correlation — see docs/data-sources.md)",
         },
     }
     return model, scaler, metrics
@@ -208,7 +246,9 @@ def main() -> None:
     parser.add_argument("--csv", default="ml/data/synthetic/repayment_events.csv")
     parser.add_argument("--loans", default="ml/data/synthetic/loans.csv")
     parser.add_argument("--telemetry", default="ml/data/synthetic/telemetry_readings.csv")
+    parser.add_argument("--swaps", default="ml/data/synthetic/swap_events.csv")
     parser.add_argument("--out", default="ml/artifacts/repayment_risk_model.joblib")
+    parser.add_argument("--out-swap", default="ml/artifacts/repayment_risk_model_swap.joblib")
     args = parser.parse_args()
 
     import joblib
@@ -216,37 +256,47 @@ def main() -> None:
     csv_path = Path(args.csv)
     loans_path = Path(args.loans)
     telemetry_path = Path(args.telemetry)
+    swaps_path = Path(args.swaps)
     if not csv_path.exists():
         raise SystemExit(f"{csv_path} not found. Run scripts/generate_synthetic.py first.")
     if not loans_path.exists():
         raise SystemExit(f"{loans_path} not found. Run scripts/generate_synthetic.py first.")
     if not telemetry_path.exists():
         raise SystemExit(f"{telemetry_path} not found. Run scripts/generate_synthetic.py first.")
+    if not swaps_path.exists():
+        raise SystemExit(f"{swaps_path} not found. Run scripts/generate_synthetic.py first.")
 
     events = pd.read_csv(csv_path)
     loans = pd.read_csv(loans_path)
     telemetry = pd.read_csv(telemetry_path)
-    df = build_features(events, loans, telemetry)
+    swaps = pd.read_csv(swaps_path)
+    df = build_features(events, loans, telemetry, swaps)
     print(f"Built {len(df)} loan-level feature rows from {len(events)} repayment events")
 
-    model, scaler, metrics = train(df)
-    auc_str = f"{metrics['roc_auc']:.3f}" if metrics["roc_auc"] is not None else "n/a (single-class test split)"
-    print(f"RRI model trained — ROC-AUC={auc_str}  base_default_rate={metrics['base_default_rate']:.3f}")
+    lease_df = df[df["financing_model"].fillna("leased_fixed") != "swap_network"]
+    print(f"Lease rows: {len(lease_df)}; swap rows: {len(df) - len(lease_df)}")
 
-    out_path = Path(args.out)
-    out_path.parent.mkdir(parents=True, exist_ok=True)
-    artifact = {
-        "model": model,
-        "scaler": scaler,
-        "feature_names": FEATURE_NAMES,
-        "metrics": metrics,
-        "model_version": "rri-v0.3-swap-cadence",
-    }
-    joblib.dump(artifact, out_path)
-    print(f"Saved -> {out_path} ({out_path.stat().st_size / 1024:.1f} KB)")
+    def _save(model, scaler, metrics, feature_names, out_path: Path, label: str, model_version: str):
+        auc_str = f"{metrics['roc_auc']:.3f}" if metrics["roc_auc"] is not None else "n/a (single-class test split)"
+        print(f"{label} trained — ROC-AUC={auc_str}  base_default_rate={metrics['base_default_rate']:.3f}")
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        artifact = {
+            "model": model,
+            "scaler": scaler,
+            "feature_names": feature_names,
+            "metrics": metrics,
+            "model_version": model_version,
+        }
+        joblib.dump(artifact, out_path)
+        print(f"Saved -> {out_path} ({out_path.stat().st_size / 1024:.1f} KB)")
+        metrics_path = out_path.with_suffix(".metrics.json")
+        metrics_path.write_text(json.dumps(metrics, indent=2))
 
-    metrics_path = out_path.with_suffix(".metrics.json")
-    metrics_path.write_text(json.dumps(metrics, indent=2))
+    lease_model, lease_scaler, lease_metrics = train(lease_df, LEASE_FEATURE_NAMES)
+    _save(lease_model, lease_scaler, lease_metrics, LEASE_FEATURE_NAMES, Path(args.out), "RRI lease model", "rri-v0.4-lease")
+
+    swap_model, swap_scaler, swap_metrics = train(df, FEATURE_NAMES)
+    _save(swap_model, swap_scaler, swap_metrics, FEATURE_NAMES, Path(args.out_swap), "RRI swap model", "rri-v0.4-swap")
 
 
 if __name__ == "__main__":

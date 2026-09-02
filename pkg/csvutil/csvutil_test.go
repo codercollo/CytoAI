@@ -93,3 +93,48 @@ loan_1,2026-01-02,,460,0,missed
 		t.Errorf("Status = %v, want missed", rows[1].Status)
 	}
 }
+
+func TestParseSwapEvents_Valid(t *testing.T) {
+	csv := `rider_id,battery_id,station_id,swapped_at,returned_state_of_charge,returned_temperature_c,returned_cycle_count,returned_depth_of_discharge,distance_km_since_last_swap
+r1,b1,ST-01,2026-01-01T08:00:00Z,45,27,120,80,42.5
+r1,b2,,2026-01-02,50,28,121,78,40.0
+`
+	rows, rowErrs := ParseSwapEvents(strings.NewReader(csv))
+	if len(rowErrs) != 0 {
+		t.Fatalf("expected no row errors, got %+v", rowErrs)
+	}
+	if len(rows) != 2 {
+		t.Fatalf("expected 2 rows, got %d", len(rows))
+	}
+	if rows[0].RiderID != "r1" || rows[0].BatteryID != "b1" {
+		t.Errorf("row0 = %q/%q, want r1/b1", rows[0].RiderID, rows[0].BatteryID)
+	}
+	if rows[0].StationID == nil || *rows[0].StationID != "ST-01" {
+		t.Errorf("row0 StationID = %v, want ST-01", rows[0].StationID)
+	}
+	if rows[1].StationID != nil {
+		t.Errorf("row1 StationID = %v, want nil", rows[1].StationID)
+	}
+	if rows[0].ReturnedCycleCount == nil || *rows[0].ReturnedCycleCount != 120 {
+		t.Errorf("row0 ReturnedCycleCount = %v, want 120", rows[0].ReturnedCycleCount)
+	}
+	if rows[1].DistanceKmSinceLastSwap == nil || *rows[1].DistanceKmSinceLastSwap != 40.0 {
+		t.Errorf("row1 DistanceKmSinceLastSwap = %v, want 40.0", rows[1].DistanceKmSinceLastSwap)
+	}
+}
+
+func TestParseSwapEvents_MissingColumn(t *testing.T) {
+	csv := `rider_id,battery_id
+r1,b1
+`
+	rows, rowErrs := ParseSwapEvents(strings.NewReader(csv))
+	if len(rowErrs) == 0 {
+		t.Fatal("expected a header-level error for missing swapped_at")
+	}
+	if rows != nil {
+		t.Errorf("expected no rows when header is invalid, got %d", len(rows))
+	}
+	if !strings.Contains(rowErrs[0].Error, "swapped_at") {
+		t.Errorf("error should mention missing column, got %q", rowErrs[0].Error)
+	}
+}

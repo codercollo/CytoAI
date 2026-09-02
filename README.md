@@ -26,21 +26,38 @@ it defaults.
 
 ## What it does
 
-1. **Ingests** battery usage data (charge cycles, temperature, depth of
-   discharge) and loan repayment history from partner operators/lenders.
-2. **Scores** two things with a lightweight ML model:
-   - **Battery Health Index (BHI)** — predicted remaining useful life /
-     state-of-health of the physical battery.
-   - **Repayment Risk Index (RRI)** — probability of default based on usage
-     and payment behaviour patterns, including a battery swap/usage cadence
-     signal measured from telemetry already collected (no new data needed).
-3. **Combines** both into a single **CytoScore** a lender can query via API
-   or view on a dashboard before approving or repricing a loan.
-4. **Flags anomalies for review** — fraud/anomaly checks on telemetry and repayment data
-   surface as a small warning (for example, "state of charge was 140%" or a
-   duplicated reading). These are review signals that protect trust in the
-   score, never an automatic rejection and never a block on ingestion (the API
-   field is `anomaly_flags`).
+CytoAI supports the two financing models actually operating in Kenya, in one
+codebase and one score response:
+
+- **Swap networks (primary)** — Spiro's model: ~60% of new e-moto sales, 450+
+  stations, 6M+ swaps. The battery is a shared fleet asset, not a rider's
+  collateral.
+- **Leased/fixed (secondary, fully supported)** — one battery per rider, where
+  the battery is the collateral.
+
+It ingests battery telemetry, swap events, and repayment history and turns
+them into two model outputs combined into one explainable **CytoScore**:
+
+1. **Battery Health Index (BHI)** — for lease, the rider's own battery's
+   remaining life; for swap networks, the fleet/pool health (returned as
+   `bhi_context: fleet` so the two are never presented interchangeably).
+2. **Repayment Risk Index (RRI)** — probability of default from repayment
+   behaviour plus usage/swap-cadence regularity.
+3. **CytoScore** — the deterministic 0–100 combination of the two, queryable
+   via API or dashboard.
+4. **Anomaly flags** — non-gating fraud/anomaly findings (`anomaly_flags`)
+   surfaced for review, never an automatic rejection and never a block on
+   ingestion.
+
+**Two-sided value proposition:**
+
+- **For swap-network operators** — an operational dashboard that tracks
+  battery health across a decentralized fleet, flags riders whose usage
+  patterns are degrading batteries faster than average, and identifies units
+  that need to be pulled from rotation.
+- **For lenders** — a credit-risk signal using battery-usage patterns and
+  swap-cadence regularity as real-time indicators, alongside repayment
+  history.
 
 ## Why this MVP is buildable fast
 

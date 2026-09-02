@@ -10,7 +10,8 @@ BASE_DIR = Path(__file__).resolve().parent.parent  # ml/
 class Config:
     ARTIFACTS_DIR = Path(os.environ.get("CYTOAI_ARTIFACTS_DIR", BASE_DIR / "artifacts"))
     BATTERY_MODEL_PATH = ARTIFACTS_DIR / "battery_health_model.joblib"
-    REPAYMENT_MODEL_PATH = ARTIFACTS_DIR / "repayment_risk_model.joblib"
+    REPAYMENT_MODEL_PATH = ARTIFACTS_DIR / "repayment_risk_model.joblib"          # lease (6-feature)
+    REPAYMENT_SWAP_MODEL_PATH = ARTIFACTS_DIR / "repayment_risk_model_swap.joblib"  # swap (7-feature)
 
     # CytoScore combination weights (spec.md section 5) — configurable per
     # partner risk appetite; Go's internal/risk/scoring.go is the source of

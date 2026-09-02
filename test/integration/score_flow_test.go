@@ -20,6 +20,8 @@ type anomalyFlag struct {
 type scoreResp struct {
 	RiderID               string        `json:"rider_id"`
 	BatteryID             string        `json:"battery_id"`
+	FinancingModel        string        `json:"financing_model,omitempty"`
+	BHIContext            string        `json:"bhi_context,omitempty"`
 	BatteryHealthIndex    float64       `json:"battery_health_index"`
 	RepaymentRiskIndex    float64       `json:"repayment_risk_index"`
 	CytoScore             float64       `json:"cyto_score"`
@@ -92,6 +94,14 @@ func TestScoreFlow(t *testing.T) {
 	}
 	if score.AnomalyFlags == nil {
 		t.Error("POST score anomaly_flags should be a non-nil array")
+	}
+	// Lease path regression: a leased_fixed rider must be scored via the lease
+	// model and labeled as per-rider BHI context (Phase 6 follow-up).
+	if score.FinancingModel != "leased_fixed" {
+		t.Errorf("financing_model = %q, want leased_fixed", score.FinancingModel)
+	}
+	if score.BHIContext != "rider_battery" {
+		t.Errorf("bhi_context = %q, want rider_battery", score.BHIContext)
 	}
 
 	// Fetch the persisted score and confirm it matches what was computed.

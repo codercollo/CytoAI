@@ -28,9 +28,10 @@ def predict_battery():
 @score_bp.post("/repayment")
 def predict_repayment():
     payload = request.get_json(silent=True) or {}
+    financing_model = payload.pop("financing_model", None)
     try:
         features = validate_repayment_payload(payload)
-        result = _service().score_repayment(features)
+        result = _service().score_repayment(features, financing_model=financing_model)
     except ValidationError as exc:
         return jsonify({"error": "invalid_request", "details": exc.errors}), 400
     except ModelNotLoadedError as exc:
@@ -53,11 +54,12 @@ def predict_combined():
     payload = request.get_json(silent=True) or {}
     battery_payload = payload.get("battery", {})
     repayment_payload = payload.get("repayment", {})
+    financing_model = repayment_payload.pop("financing_model", None) if isinstance(repayment_payload, dict) else None
 
     try:
         battery_features = validate_battery_payload(battery_payload)
         repayment_features = validate_repayment_payload(repayment_payload)
-        result = _service().combined_score(battery_features, repayment_features)
+        result = _service().combined_score(battery_features, repayment_features, financing_model=financing_model)
     except ValidationError as exc:
         return jsonify({"error": "invalid_request", "details": exc.errors}), 400
     except ModelNotLoadedError as exc:

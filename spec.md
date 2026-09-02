@@ -20,10 +20,21 @@ Spiro, Ampersand, Arc Ride) are underwriting a fast-growing volume of
 electric-motorcycle loans and battery leases, but have no shared, data-driven
 way to answer two questions before money moves:
 
-1. **How much life is left in this battery** (it's the collateral, and it's
-   the single most expensive component of the vehicle)?
+1. **How much life is left in the battery** — for `leased_fixed` loans it is
+   the rider's collateral and the single most expensive component of the
+   vehicle; for `swap_network` fleets it is the operator's pool asset that
+   must be kept healthy and in rotation.
 2. **How likely is this rider to keep paying** (most riders are
    informal-economy, thin-file borrowers with no traditional credit history)?
+
+Swap networks have become the dominant distribution model and are therefore
+the **primary design target**. Spiro — the category leader — accounts for
+~60% of new electric-motorcycle sales in Kenya, operates 450+ battery-swap
+stations, and has processed 6M+ battery swaps. In that model the battery is
+not the rider's collateral, so the scoring question splits in two: fleet/pool
+health for the operator, and per-rider usage stress for the lender. The
+`leased_fixed` model (one battery as collateral) remains fully supported but
+is **secondary**.
 
 Industry advisory research on this exact sector (MicroSave Consulting, 2024)
 recommends digital tools that use telematics data for credit appraisal and
@@ -42,8 +53,8 @@ verticals in this document.
 
 In scope for the hackathon/accelerator MVP:
 
-- A working ingestion pipeline for two data types: battery telemetry and
-  repayment events.
+- A working ingestion pipeline for three data types: battery telemetry,
+  repayment events, and swap events (for swap networks).
 - Two small, fast-training ML models (battery health, repayment risk) that
   combine into one score.
 - A REST API (`/v1/score`) a partner can call.
@@ -155,16 +166,34 @@ CREATE TABLE telemetry_readings (
     distance_km_since_last NUMERIC
 );
 
+-- Swap-network telemetry: one row per physical battery swap (Spiro/Ampersand
+-- style). battery_id here is "which unit this rider was carrying", NOT
+-- collateral — it can differ swap to swap.
+CREATE TABLE swap_events (
+    id BIGSERIAL PRIMARY KEY,
+    rider_id UUID NOT NULL REFERENCES riders(id),
+    battery_id UUID NOT NULL REFERENCES batteries(id),
+    station_id TEXT,
+    swapped_at TIMESTAMPTZ NOT NULL,
+    returned_state_of_charge NUMERIC,
+    returned_temperature_c NUMERIC,
+    returned_cycle_count INT,
+    returned_depth_of_discharge NUMERIC,
+    distance_km_since_last_swap NUMERIC
+);
+
 CREATE TABLE loans (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     external_ref TEXT,
     rider_id UUID NOT NULL REFERENCES riders(id),
-    battery_id UUID REFERENCES batteries(id),
+    battery_id UUID REFERENCES batteries(id),  -- NULL for swap_network (no collateral unit)
     principal_kes NUMERIC,
-    battery_value_kes NUMERIC,          -- collateral value at origination
+    battery_value_kes NUMERIC,          -- collateral value (lease); fleet unit value proxy (swap)
     term_months INT,
     daily_installment_kes NUMERIC,
-    started_at DATE
+    started_at DATE,
+    financing_model TEXT NOT NULL DEFAULT 'leased_fixed'
+        CHECK (financing_model IN ('leased_fixed','swap_network'))
 );
 
 CREATE TABLE repayment_events (
@@ -210,9 +239,13 @@ CREATE TABLE partners (
 );
 ```
 
-CSV ingestion maps directly onto `telemetry_readings` and
-`repayment_events` — the two files a partner needs to export are essentially
-flat versions of these tables, keyed by their own `external_ref` IDs.
+CSV ingestion maps directly onto `telemetry_readings`, `repayment_events`,
+and (for swap operators) `swap_events` — the files a partner needs to export
+are flat versions of these tables, keyed by their own `external_ref` IDs.
+Scoring branches on `loans.financing_model`: `leased_fixed` scores the rider's
+own battery from `telemetry_readings`; `swap_network` scores fleet-level BHI
+from aggregated `swap_events` and per-rider stress from the rider's own
+`swap_events` (see §5).
 
 ## 5. Model design (lightweight, fast to prototype)
 
@@ -226,6 +259,21 @@ serialized artifacts.
   max_depth=3)
 - Features: cycle count, average depth of discharge, average temperature,
   age (cycle-count proxy in the current artifact), charge-rate variance
+- Two BHI scopes, one model:
+  - **Per-rider BHI (`leased_fixed`)** — remaining life of the single
+    collateral battery, from its own `telemetry_readings`.
+  - **Fleet-level BHI (`swap_network`)** — health of the pool a rider draws
+    from, aggregated from the operator's `swap_events`. This is an
+    operator/fleet-health signal, not a claim about any one rider's
+    collateral, and is returned as `bhi_context: fleet` so the API/UI never
+    present it interchangeably with per-rider BHI.
+- Training-time aggregation (`aggregate_fleet_bhi()`): Phase 6 trains the
+  fleet-BHI path by aggregating each battery's `swap_events` into the same
+  five BHI features the per-rider model uses (latest cycle count, mean
+  depth-of-discharge, mean temperature, swap-history age, charge-rate
+  variance = 0 because swap_events carry no voltage snapshot). The serving
+  path mirrors this in `internal/domain/swap_features.go`
+  (`SwapBatteryBhiFeaturesFrom`), so inference stays consistent with training.
 - Target: capacity fade % / estimated remaining cycles (from Tier-1 public
   cycle-life datasets; transferable because degradation physics is
   chemistry-driven, not geography-driven — the Kenya-specific overlay is
@@ -248,6 +296,13 @@ gaps) + 0.5 * CV(distance_km_since_last)`; computed in
     `internal/domain/features.go`)
 - Target: probability of 2+ fully-missed payments in the trailing 30% of
   each loan's repayment history (not a single late day)
+
+For `swap_network` loans, the cadence signal above is computed from
+`swap_events` timestamps instead of `telemetry_readings`, and an additional
+RRI input — `battery_stress_profile` — measures how much hotter and more
+deeply discharged a rider returns batteries versus the fleet average. This
+stress signal is a HYPOTHESIS to validate against real repayment data once a
+pilot exists, not a proven correlation.
 
 **CytoScore (combined)**
 
@@ -349,6 +404,17 @@ Response fields added with the swap-cadence + anomaly work (mirrored in
   and/or public proxy data, not live Kenyan partner data, and must not be
   read as real-world accuracy. Treat every score as a hackathon/accelerator
   prototype, not a deployed risk model.
+- **Synthetic feature weights are hypotheses, not evidence.** The
+  `battery_stress_profile` RRI feature (a rider returns batteries hotter and
+  more deeply discharged than the fleet average) is trained on a synthetic,
+  assumed correlation with repayment risk; it must be re-evaluated against
+  real repayment outcomes before it is trusted at production confidence.
+- **Population-shift and version-boundary disclosure.** The
+  `rri-v0.3` → `rri-v0.4-lease` transition reflects both a feature-pipeline
+  change and a training-population-size change, so scores from the two
+  versions are not directly comparable, and a lender relying on score
+  trends across that version boundary should treat it as a reset point, not
+  a continuous series.
 - **No autonomous credit decisions.** CytoScore returns a score and its
   contributing factors; the lender's own underwriting process makes the
   final call. This is stated in the API response and in partner terms.

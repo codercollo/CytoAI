@@ -30,6 +30,11 @@ from sklearn.ensemble import GradientBoostingRegressor
 from sklearn.metrics import mean_absolute_error, r2_score
 from sklearn.model_selection import train_test_split
 
+# Make `ml.app` importable so aggregate_fleet_bhi() can reuse
+# compute_swap_battery_bhi_features() from the scoring service (the single
+# source of truth) rather than re-implementing swap->BHI feature logic here.
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+
 # Feature order is part of the model contract — the Flask sidecar and the
 # Go API's request validation both depend on this exact list/order.
 FEATURE_NAMES = [
@@ -191,10 +196,51 @@ def train(df: pd.DataFrame) -> tuple[GradientBoostingRegressor, dict]:
     return model, metrics
 
 
+def aggregate_fleet_bhi(model, swaps: pd.DataFrame) -> dict:
+    """Deterministic fleet-level BHI summary (NOT a second trained model).
+
+    Rolls the per-battery BHI predictions up to an operator/pool summary using
+    swap_events.csv to know which batteries belong to the pool. Each battery's
+    swap-derived BHI features are computed by the same
+    compute_swap_battery_bhi_features() the live serving path uses
+    (ml/app/services/scoring_service.py), so training-time aggregation and
+    live fleet BHI stay consistent.
+    """
+    from ml.app.services.scoring_service import compute_swap_battery_bhi_features
+
+    if swaps.empty:
+        return {"n_batteries": 0, "mean_bhi": None}
+
+    per_battery = []
+    for battery_id, grp in swaps.groupby("battery_id"):
+        features = compute_swap_battery_bhi_features(grp.to_dict("records"))
+        if features is None:
+            continue
+        row = pd.DataFrame([[features[n] for n in FEATURE_NAMES]], columns=FEATURE_NAMES)
+        soh = float(model.predict(row)[0])
+        bhi = max(0.0, min(100.0, soh * 100.0))
+        per_battery.append({"battery_id": str(battery_id), "bhi": round(bhi, 2)})
+
+    if not per_battery:
+        return {"n_batteries": 0, "mean_bhi": None}
+
+    bhis = [p["bhi"] for p in per_battery]
+    return {
+        "n_batteries": len(per_battery),
+        "mean_bhi": round(float(np.mean(bhis)), 2),
+        "min_bhi": round(float(min(bhis)), 2),
+        "p50_bhi": round(float(np.percentile(bhis, 50)), 2),
+        "p90_bhi": round(float(np.percentile(bhis, 90)), 2),
+        "per_battery": per_battery,
+    }
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--data-dir", default="ml/data/battery/raw")
     parser.add_argument("--out", default="ml/artifacts/battery_health_model.joblib")
+    parser.add_argument("--swaps", default="ml/data/synthetic/swap_events.csv")
+    parser.add_argument("--fleet-out", default="ml/artifacts/fleet_bhi_summary.json")
     args = parser.parse_args()
 
     import joblib
@@ -220,6 +266,22 @@ def main() -> None:
 
     metrics_path = out_path.with_suffix(".metrics.json")
     metrics_path.write_text(json.dumps(metrics, indent=2))
+
+    # Deterministic fleet-level aggregation (NOT a second model): roll the
+    # per-battery BHI predictions up to an operator/pool summary using
+    # swap_events.csv to know which batteries belong to the pool.
+    swaps_path = Path(args.swaps)
+    if swaps_path.exists():
+        swaps = pd.read_csv(swaps_path)
+        fleet_summary = aggregate_fleet_bhi(model, swaps)
+        fleet_out = Path(args.fleet_out)
+        fleet_out.write_text(json.dumps(fleet_summary, indent=2))
+        print(
+            f"Fleet BHI summary -> {fleet_out} "
+            f"({fleet_summary.get('n_batteries')} batteries, mean BHI={fleet_summary.get('mean_bhi')})"
+        )
+    else:
+        print(f"Fleet BHI summary skipped: {swaps_path} not found (run scripts/generate_synthetic.py)")
 
 
 if __name__ == "__main__":

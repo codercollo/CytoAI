@@ -27,6 +27,7 @@ const riderSummaryColumns = `
 	l.term_months,
 	l.daily_installment_kes,
 	l.started_at,
+	l.financing_model,
 	s.id,
 	s.battery_id::text,
 	s.battery_health_index,
@@ -163,6 +164,7 @@ func scanRiderSummary(scan func(dest ...any) error) (domain.RiderSummary, error)
 		onboarded, bCommissioned, loanStarted, scoredAt *time.Time
 		bID, bRef, manufacturer                         *string
 		loanID, loanRef, scoreBatteryID, modelVersion   *string
+		financingModel                                  *string
 		rated, principal, batteryValue, daily           *float64
 		bhi, rri, cyto                                  *float64
 		term                                            *int
@@ -185,6 +187,7 @@ func scanRiderSummary(scan func(dest ...any) error) (domain.RiderSummary, error)
 		&term,
 		&daily,
 		&loanStarted,
+		&financingModel,
 		&scoreID,
 		&scoreBatteryID,
 		&bhi,
@@ -219,6 +222,7 @@ func scanRiderSummary(scan func(dest ...any) error) (domain.RiderSummary, error)
 			TermMonths:          term,
 			DailyInstallmentKes: daily,
 			StartedAt:           loanStarted,
+			FinancingModel:      financingModel,
 		}
 	}
 

@@ -1,0 +1,249 @@
+{
+  "n_batteries": 60,
+  "mean_bhi": 60.8,
+  "min_bhi": 60.54,
+  "p50_bhi": 60.65,
+  "p90_bhi": 61.41,
+  "per_battery": [
+    {
+      "battery_id": "battery_pool_000",
+      "bhi": 61.46
+    },
+    {
+      "battery_id": "battery_pool_001",
+      "bhi": 60.54
+    },
+    {
+      "battery_id": "battery_pool_002",
+      "bhi": 60.54
+    },
+    {
+      "battery_id": "battery_pool_003",
+      "bhi": 61.41
+    },
+    {
+      "battery_id": "battery_pool_004",
+      "bhi": 60.65
+    },
+    {
+      "battery_id": "battery_pool_005",
+      "bhi": 61.3
+    },
+    {
+      "battery_id": "battery_pool_006",
+      "bhi": 60.65
+    },
+    {
+      "battery_id": "battery_pool_007",
+      "bhi": 61.41
+    },
+    {
+      "battery_id": "battery_pool_008",
+      "bhi": 60.65
+    },
+    {
+      "battery_id": "battery_pool_009",
+      "bhi": 60.66
+    },
+    {
+      "battery_id": "battery_pool_010",
+      "bhi": 60.65
+    },
+    {
+      "battery_id": "battery_pool_011",
+      "bhi": 60.7
+    },
+    {
+      "battery_id": "battery_pool_012",
+      "bhi": 60.54
+    },
+    {
+      "battery_id": "battery_pool_013",
+      "bhi": 60.65
+    },
+    {
+      "battery_id": "battery_pool_014",
+      "bhi": 60.7
+    },
+    {
+      "battery_id": "battery_pool_015",
+      "bhi": 60.7
+    },
+    {
+      "battery_id": "battery_pool_016",
+      "bhi": 60.54
+    },
+    {
+      "battery_id": "battery_pool_017",
+      "bhi": 61.46
+    },
+    {
+      "battery_id": "battery_pool_018",
+      "bhi": 61.3
+    },
+    {
+      "battery_id": "battery_pool_019",
+      "bhi": 60.65
+    },
+    {
+      "battery_id": "battery_pool_020",
+      "bhi": 60.65
+    },
+    {
+      "battery_id": "battery_pool_021",
+      "bhi": 60.54
+    },
+    {
+      "battery_id": "battery_pool_022",
+      "bhi": 60.65
+    },
+    {
+      "battery_id": "battery_pool_023",
+      "bhi": 60.7
+    },
+    {
+      "battery_id": "battery_pool_024",
+      "bhi": 60.66
+    },
+    {
+      "battery_id": "battery_pool_025",
+      "bhi": 60.65
+    },
+    {
+      "battery_id": "battery_pool_026",
+      "bhi": 60.54
+    },
+    {
+      "battery_id": "battery_pool_027",
+      "bhi": 61.3
+    },
+    {
+      "battery_id": "battery_pool_028",
+      "bhi": 60.54
+    },
+    {
+      "battery_id": "battery_pool_029",
+      "bhi": 60.65
+    },
+    {
+      "battery_id": "battery_pool_030",
+      "bhi": 60.54
+    },
+    {
+      "battery_id": "battery_pool_031",
+      "bhi": 61.3
+    },
+    {
+      "battery_id": "battery_pool_032",
+      "bhi": 60.65
+    },
+    {
+      "battery_id": "battery_pool_033",
+      "bhi": 60.65
+    },
+    {
+      "battery_id": "battery_pool_034",
+      "bhi": 60.65
+    },
+    {
+      "battery_id": "battery_pool_035",
+      "bhi": 60.66
+    },
+    {
+      "battery_id": "battery_pool_036",
+      "bhi": 60.7
+    },
+    {
+      "battery_id": "battery_pool_037",
+      "bhi": 61.41
+    },
+    {
+      "battery_id": "battery_pool_038",
+      "bhi": 60.54
+    },
+    {
+      "battery_id": "battery_pool_039",
+      "bhi": 60.65
+    },
+    {
+      "battery_id": "battery_pool_040",
+      "bhi": 60.54
+    },
+    {
+      "battery_id": "battery_pool_041",
+      "bhi": 61.41
+    },
+    {
+      "battery_id": "battery_pool_042",
+      "bhi": 60.65
+    },
+    {
+      "battery_id": "battery_pool_043",
+      "bhi": 60.7
+    },
+    {
+      "battery_id": "battery_pool_044",
+      "bhi": 61.3
+    },
+    {
+      "battery_id": "battery_pool_045",
+      "bhi": 60.65
+    },
+    {
+      "battery_id": "battery_pool_046",
+      "bhi": 60.54
+    },
+    {
+      "battery_id": "battery_pool_047",
+      "bhi": 60.54
+    },
+    {
+      "battery_id": "battery_pool_048",
+      "bhi": 60.65
+    },
+    {
+      "battery_id": "battery_pool_049",
+      "bhi": 61.41
+    },
+    {
+      "battery_id": "battery_pool_050",
+      "bhi": 60.65
+    },
+    {
+      "battery_id": "battery_pool_051",
+      "bhi": 61.3
+    },
+    {
+      "battery_id": "battery_pool_052",
+      "bhi": 60.54
+    },
+    {
+      "battery_id": "battery_pool_053",
+      "bhi": 60.54
+    },
+    {
+      "battery_id": "battery_pool_054",
+      "bhi": 60.54
+    },
+    {
+      "battery_id": "battery_pool_055",
+      "bhi": 60.7
+    },
+    {
+      "battery_id": "battery_pool_056",
+      "bhi": 60.65
+    },
+    {
+      "battery_id": "battery_pool_057",
+      "bhi": 60.65
+    },
+    {
+      "battery_id": "battery_pool_058",
+      "bhi": 61.41
+    },
+    {
+      "battery_id": "battery_pool_059",
+      "bhi": 60.65
+    }
+  ]
+}

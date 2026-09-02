@@ -21,6 +21,7 @@ type Loan struct {
 	TermMonths          *int       `db:"term_months" json:"term_months,omitempty"`
 	DailyInstallmentKes *float64   `db:"daily_installment_kes" json:"daily_installment_kes,omitempty"`
 	StartedAt           *time.Time `db:"started_at" json:"started_at,omitempty"`
+	FinancingModel      *string    `db:"financing_model" json:"financing_model,omitempty"`
 }
 
 // RepaymentEvent mirrors the `repayment_events` table (docs/spec.md §4).

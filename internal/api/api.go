@@ -21,16 +21,23 @@ type Scorer interface {
 type Store interface {
 	InsertTelemetryReadings(ctx context.Context, rows []domain.TelemetryReading) (int64, error)
 	InsertRepaymentEvents(ctx context.Context, rows []domain.RepaymentEvent) (int64, error)
+	InsertSwapEvents(ctx context.Context, events []domain.SwapEvent) (int64, error)
 	InsertScore(ctx context.Context, s domain.Score) (int64, error)
 	LatestScore(ctx context.Context, riderID string) (domain.Score, error)
 	PortfolioScores(ctx context.Context, partnerID string, limit, offset int) ([]domain.Score, error)
 	TelemetryReadingsByBattery(ctx context.Context, batteryID string) ([]domain.TelemetryReading, error)
 	RepaymentEventsByLoan(ctx context.Context, loanID string) ([]domain.RepaymentEvent, error)
 	LoanByRiderAndBattery(ctx context.Context, riderID, batteryID string) (domain.Loan, error)
+	LatestLoanForRider(ctx context.Context, riderID string) (domain.Loan, error)
+	SwapEventsByRider(ctx context.Context, riderID string) ([]domain.SwapEvent, error)
+	SwapEventsByPartner(ctx context.Context, partnerID string) ([]domain.SwapEvent, error)
 	ResolveBatteryID(ctx context.Context, partnerID, ref string) (string, error)
 	ResolveLoanID(ctx context.Context, partnerID, ref string) (string, error)
+	ResolveRiderID(ctx context.Context, partnerID, ref string) (string, error)
+	ResolveBatteryIDByExternalRef(ctx context.Context, ref string) (string, error)
 	RiderBelongsToPartner(ctx context.Context, partnerID, riderID string) (bool, error)
 	RiderBatteryPairsForPartner(ctx context.Context, partnerID string) ([]domain.RiderBatteryPair, error)
+	SwapNetworkRiderIDsForPartner(ctx context.Context, partnerID string) ([]string, error)
 	ListRiders(ctx context.Context, partnerID string, limit, offset int) ([]domain.RiderSummary, error)
 	RiderByID(ctx context.Context, partnerID, riderID string) (domain.RiderSummary, error)
 	CreateRider(ctx context.Context, partnerID string, reg domain.RiderRegistration) (domain.RiderSummary, error)
@@ -47,6 +54,7 @@ type Authenticator interface {
 type AnomalyDetector interface {
 	DetectTelemetryAnomalies(ctx context.Context, records []risk.TelemetryAnomalyRecord) ([]risk.AnomalyFlag, error)
 	DetectRepaymentAnomalies(ctx context.Context, records []risk.RepaymentAnomalyRecord) ([]risk.AnomalyFlag, error)
+	DetectSwapAnomalies(ctx context.Context, records []risk.SwapAnomalyRecord) ([]risk.AnomalyFlag, error)
 }
 
 // Config wires a Server's dependencies.

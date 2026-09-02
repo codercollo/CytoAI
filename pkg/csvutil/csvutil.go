@@ -229,3 +229,71 @@ func ParseRepaymentEvents(r io.Reader) ([]domain.RepaymentEvent, []RowError) {
 
 	return out, rowErrs
 }
+
+// ParseSwapEvents parses swap-event CSV. Required columns: rider_id, battery_id,
+// swapped_at. Unknown columns are ignored. rider_id/battery_id are the partner's
+// external refs and are resolved to UUIDs by the ingestion handler.
+func ParseSwapEvents(r io.Reader) ([]domain.SwapEvent, []RowError) {
+	header, records, err := readAll(r)
+	if err != nil {
+		return nil, []RowError{{Error: err.Error()}}
+	}
+
+	idx := columnIndex(header)
+	if missing := missingColumns(idx, "rider_id", "battery_id", "swapped_at"); len(missing) > 0 {
+		return nil, []RowError{{Error: fmt.Sprintf("missing required column(s): %s", strings.Join(missing, ", "))}}
+	}
+	riderCol := idx["rider_id"]
+	batteryCol := idx["battery_id"]
+	swappedCol := idx["swapped_at"]
+
+	var out []domain.SwapEvent
+	var rowErrs []RowError
+
+	for rowNum, rec := range records {
+		row := rowNum + 2
+		if riderCol >= len(rec) || strings.TrimSpace(rec[riderCol]) == "" {
+			rowErrs = append(rowErrs, RowError{Row: row, Field: "rider_id", Error: "required"})
+			continue
+		}
+		if batteryCol >= len(rec) || strings.TrimSpace(rec[batteryCol]) == "" {
+			rowErrs = append(rowErrs, RowError{Row: row, Field: "battery_id", Error: "required"})
+			continue
+		}
+		swappedAt, err := parseTimeFlexible(rec[swappedCol])
+		if err != nil {
+			rowErrs = append(rowErrs, RowError{Row: row, Field: "swapped_at", Error: "must be a date/RFC3339 timestamp"})
+			continue
+		}
+
+		e := domain.SwapEvent{RiderID: rec[riderCol], BatteryID: rec[batteryCol], SwappedAt: swappedAt}
+
+		if s := get(rec, idx, "station_id"); s != "" {
+			e.StationID = &s
+		}
+		if e.ReturnedStateOfCharge, err = parseFloatPtr(get(rec, idx, "returned_state_of_charge")); err != nil {
+			rowErrs = append(rowErrs, RowError{Row: row, Field: "returned_state_of_charge", Error: "must be a number"})
+			continue
+		}
+		if e.ReturnedTemperatureC, err = parseFloatPtr(get(rec, idx, "returned_temperature_c")); err != nil {
+			rowErrs = append(rowErrs, RowError{Row: row, Field: "returned_temperature_c", Error: "must be a number"})
+			continue
+		}
+		if e.ReturnedCycleCount, err = parseIntPtr(get(rec, idx, "returned_cycle_count")); err != nil {
+			rowErrs = append(rowErrs, RowError{Row: row, Field: "returned_cycle_count", Error: "must be an integer"})
+			continue
+		}
+		if e.ReturnedDepthOfDischarge, err = parseFloatPtr(get(rec, idx, "returned_depth_of_discharge")); err != nil {
+			rowErrs = append(rowErrs, RowError{Row: row, Field: "returned_depth_of_discharge", Error: "must be a number"})
+			continue
+		}
+		if e.DistanceKmSinceLastSwap, err = parseFloatPtr(get(rec, idx, "distance_km_since_last_swap")); err != nil {
+			rowErrs = append(rowErrs, RowError{Row: row, Field: "distance_km_since_last_swap", Error: "must be a number"})
+			continue
+		}
+
+		out = append(out, e)
+	}
+
+	return out, rowErrs
+}

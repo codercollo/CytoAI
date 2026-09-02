@@ -59,6 +59,7 @@ type loanInfo struct {
 	TermMonths          *int       `json:"term_months,omitempty"`
 	DailyInstallmentKes *float64   `json:"daily_installment_kes,omitempty"`
 	StartedAt           *time.Time `json:"started_at,omitempty"`
+	FinancingModel      *string    `json:"financing_model,omitempty"`
 }
 
 type scoreInfo struct {
@@ -126,6 +127,7 @@ func toRiderResponse(sm domain.RiderSummary) riderResponse {
 			TermMonths:          sm.Loan.TermMonths,
 			DailyInstallmentKes: sm.Loan.DailyInstallmentKes,
 			StartedAt:           sm.Loan.StartedAt,
+			FinancingModel:      sm.Loan.FinancingModel,
 		}
 	}
 	if sm.Score != nil {

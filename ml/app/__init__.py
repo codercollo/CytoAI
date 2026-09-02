@@ -20,12 +20,15 @@ def create_app(config: type[Config] = Config) -> Flask:
 
     battery_model = BatteryHealthModel(config.BATTERY_MODEL_PATH)
     repayment_model = RepaymentRiskModel(config.REPAYMENT_MODEL_PATH)
+    repayment_swap_model = RepaymentRiskModel(config.REPAYMENT_SWAP_MODEL_PATH)
     battery_model.load()
     repayment_model.load()
+    repayment_swap_model.load()
 
     scoring_service = ScoringService(
         battery_model=battery_model,
         repayment_model=repayment_model,
+        repayment_swap_model=repayment_swap_model,
         bhi_weight=config.BHI_WEIGHT,
         rri_weight=config.RRI_WEIGHT,
     )

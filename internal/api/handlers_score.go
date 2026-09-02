@@ -22,6 +22,8 @@ type scoreRequest struct {
 type scoreResponse struct {
 	RiderID               string             `json:"rider_id"`
 	BatteryID             string             `json:"battery_id"`
+	FinancingModel        string             `json:"financing_model,omitempty"`
+	BHIContext            string             `json:"bhi_context,omitempty"`
 	BatteryHealthIndex    float64            `json:"battery_health_index"`
 	RepaymentRiskIndex    float64            `json:"repayment_risk_index"`
 	CytoScore             float64            `json:"cyto_score"`
@@ -37,6 +39,8 @@ type storedScoreResponse struct {
 	ID                 int64              `json:"id"`
 	RiderID            *string            `json:"rider_id,omitempty"`
 	BatteryID          *string            `json:"battery_id,omitempty"`
+	FinancingModel     string             `json:"financing_model,omitempty"`
+	BHIContext         string             `json:"bhi_context,omitempty"`
 	BatteryHealthIndex float64            `json:"battery_health_index"`
 	RepaymentRiskIndex float64            `json:"repayment_risk_index"`
 	CytoScore          float64            `json:"cyto_score"`
@@ -153,8 +157,8 @@ func (s *Server) handleScoreCompute(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid_request", err.Error(), nil)
 		return
 	}
-	if req.RiderID == "" || req.BatteryID == "" {
-		writeError(w, http.StatusBadRequest, "invalid_request", "rider_id and battery_id are required", nil)
+	if req.RiderID == "" {
+		writeError(w, http.StatusBadRequest, "invalid_request", "rider_id is required", nil)
 		return
 	}
 
@@ -169,7 +173,7 @@ func (s *Server) handleScoreCompute(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	resp, err := s.scoreRiderBattery(ctx, req.RiderID, req.BatteryID)
+	resp, err := s.scoreRider(ctx, partnerIDFrom(ctx), req.RiderID, req.BatteryID)
 	if err != nil {
 		switch {
 		case errors.Is(err, errNoLoan):
@@ -184,32 +188,86 @@ func (s *Server) handleScoreCompute(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, resp)
 }
 
-// scoreRiderBattery runs the full scoring flow for one rider/battery pair:
-// load telemetry + repayment events, compute features, call the scorer, and
-// persist the result. Ownership is the caller's responsibility.
-func (s *Server) scoreRiderBattery(ctx context.Context, riderID, batteryID string) (*scoreResponse, error) {
-	loan, err := s.cfg.Store.LoanByRiderAndBattery(ctx, riderID, batteryID)
+// loadLoan returns the loan for a rider/battery pair, or the rider's latest
+// loan when batteryID is empty (swap_network loans have no battery).
+func (s *Server) loadLoan(ctx context.Context, riderID, batteryID string) (domain.Loan, error) {
+	if batteryID != "" {
+		return s.cfg.Store.LoanByRiderAndBattery(ctx, riderID, batteryID)
+	}
+	return s.cfg.Store.LatestLoanForRider(ctx, riderID)
+}
+
+// scoreRider runs the full scoring flow for one rider, branching on the loan's
+// financing_model. Ownership is the caller's responsibility.
+func (s *Server) scoreRider(ctx context.Context, partnerID, riderID, batteryID string) (*scoreResponse, error) {
+	loan, err := s.loadLoan(ctx, riderID, batteryID)
 	if err != nil {
 		return nil, errNoLoan
 	}
-	telemetry, err := s.cfg.Store.TelemetryReadingsByBattery(ctx, batteryID)
-	if err != nil {
-		return nil, fmt.Errorf("load telemetry: %w", err)
+
+	model := ""
+	if loan.FinancingModel != nil {
+		model = *loan.FinancingModel
 	}
+
 	events, err := s.cfg.Store.RepaymentEventsByLoan(ctx, loan.ID)
 	if err != nil {
 		return nil, fmt.Errorf("load repayment events: %w", err)
 	}
 
-	batteryFeatures, err := domain.BatteryFeaturesFrom(domain.Battery{ID: batteryID}, telemetry)
-	if err != nil {
-		return nil, &insufficientError{reason: err.Error()}
+	var (
+		batteryFeatures   risk.BatteryFeatures
+		repaymentFeatures risk.RepaymentFeatures
+		telemetry         []domain.TelemetryReading
+		bhiContext        string
+	)
+
+	if model == "swap_network" {
+		bhiContext = "fleet"
+		fleetSwaps, err := s.cfg.Store.SwapEventsByPartner(ctx, partnerID)
+		if err != nil {
+			return nil, fmt.Errorf("load fleet swap events: %w", err)
+		}
+		batteryFeatures, err = domain.SwapBatteryBhiFeaturesFrom(fleetSwaps)
+		if err != nil {
+			return nil, &insufficientError{reason: err.Error()}
+		}
+
+		riderSwaps, err := s.cfg.Store.SwapEventsByRider(ctx, riderID)
+		if err != nil {
+			return nil, fmt.Errorf("load rider swap events: %w", err)
+		}
+		repaymentFeatures, err = domain.RepaymentFeaturesFrom(loan, events)
+		if err != nil {
+			return nil, &insufficientError{reason: err.Error()}
+		}
+		repaymentFeatures.TelemetryCadenceProxy = domain.SwapCadenceProxyFrom(riderSwaps)
+		repaymentFeatures.BatteryStressProfile = domain.SwapBatteryStressProfileFrom(riderSwaps, fleetSwaps)
+		repaymentFeatures.FinancingModel = "swap_network"
+	} else {
+		bhiContext = "rider_battery"
+		if batteryID == "" {
+			if loan.BatteryID != nil {
+				batteryID = *loan.BatteryID
+			} else {
+				return nil, errNoLoan
+			}
+		}
+		telemetry, err = s.cfg.Store.TelemetryReadingsByBattery(ctx, batteryID)
+		if err != nil {
+			return nil, fmt.Errorf("load telemetry: %w", err)
+		}
+		batteryFeatures, err = domain.BatteryFeaturesFrom(domain.Battery{ID: batteryID}, telemetry)
+		if err != nil {
+			return nil, &insufficientError{reason: err.Error()}
+		}
+		repaymentFeatures, err = domain.RepaymentFeaturesFrom(loan, events)
+		if err != nil {
+			return nil, &insufficientError{reason: err.Error()}
+		}
+		repaymentFeatures.TelemetryCadenceProxy = domain.TelemetryCadenceProxyFrom(telemetry)
+		repaymentFeatures.FinancingModel = "leased_fixed"
 	}
-	repaymentFeatures, err := domain.RepaymentFeaturesFrom(loan, events)
-	if err != nil {
-		return nil, &insufficientError{reason: err.Error()}
-	}
-	repaymentFeatures.TelemetryCadenceProxy = domain.TelemetryCadenceProxyFrom(telemetry)
 
 	result, err := s.cfg.Scorer.Score(ctx, batteryFeatures, repaymentFeatures)
 	if err != nil {
@@ -225,7 +283,9 @@ func (s *Server) scoreRiderBattery(ctx context.Context, riderID, batteryID strin
 	now := time.Now().UTC()
 	score := domain.FromRiskResult(*result)
 	score.RiderID = &riderID
-	score.BatteryID = &batteryID
+	if batteryID != "" {
+		score.BatteryID = &batteryID
+	}
 	score.ScoredAt = &now
 	if _, err := s.cfg.Store.InsertScore(ctx, score); err != nil {
 		return nil, fmt.Errorf("persist score: %w", err)
@@ -234,6 +294,8 @@ func (s *Server) scoreRiderBattery(ctx context.Context, riderID, batteryID strin
 	return &scoreResponse{
 		RiderID:               riderID,
 		BatteryID:             batteryID,
+		FinancingModel:        model,
+		BHIContext:            bhiContext,
 		BatteryHealthIndex:    float64(result.BatteryHealthIndex),
 		RepaymentRiskIndex:    float64(result.RepaymentRiskIndex),
 		CytoScore:             float64(result.CytoScore),
@@ -278,12 +340,29 @@ func (s *Server) handleRescoreAll(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	swapRiderIDs, err := s.cfg.Store.SwapNetworkRiderIDsForPartner(ctx, partnerID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "internal_error", "failed to list swap-network riders", nil)
+		return
+	}
+
 	var skipped []rescoreSkipped
 	scored := 0
 	for _, p := range pairs {
-		if _, err := s.scoreRiderBattery(ctx, p.RiderID, p.BatteryID); err != nil {
+		if _, err := s.scoreRider(ctx, partnerID, p.RiderID, p.BatteryID); err != nil {
 			if isInsufficient(err) {
 				skipped = append(skipped, rescoreSkipped{RiderID: p.RiderID, BatteryID: p.BatteryID, Reason: err.Error()})
+				continue
+			}
+			writeError(w, http.StatusInternalServerError, "scoring_failed", err.Error(), nil)
+			return
+		}
+		scored++
+	}
+	for _, riderID := range swapRiderIDs {
+		if _, err := s.scoreRider(ctx, partnerID, riderID, ""); err != nil {
+			if isInsufficient(err) {
+				skipped = append(skipped, rescoreSkipped{RiderID: riderID, Reason: err.Error()})
 				continue
 			}
 			writeError(w, http.StatusInternalServerError, "scoring_failed", err.Error(), nil)
@@ -328,6 +407,50 @@ func (s *Server) handleScoreGet(w http.ResponseWriter, r *http.Request) {
 		ModelVersion:       score.ModelVersion,
 		AnomalyFlags:       flags,
 	})
+}
+
+// handleOperatorStressFlags returns swap-network stress flags for the
+// operator's fleet (rider-level, non-gating). This is the operational-dashboard
+// signal, distinct from the lender-facing risk score.
+func (s *Server) handleOperatorStressFlags(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	partnerID := partnerIDFrom(ctx)
+
+	swaps, err := s.cfg.Store.SwapEventsByPartner(ctx, partnerID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "internal_error", "failed to load swap events", nil)
+		return
+	}
+	if s.cfg.AnomalyDetector == nil {
+		writeJSON(w, http.StatusOK, map[string]any{"flags": []risk.AnomalyFlag{}})
+		return
+	}
+
+	records := make([]risk.SwapAnomalyRecord, 0, len(swaps))
+	for _, sw := range swaps {
+		records = append(records, risk.SwapAnomalyRecord{
+			ID:                       sw.ID,
+			RiderID:                  sw.RiderID,
+			BatteryID:                sw.BatteryID,
+			StationID:                sw.StationID,
+			SwappedAt:                sw.SwappedAt.Format(time.RFC3339),
+			ReturnedStateOfCharge:    sw.ReturnedStateOfCharge,
+			ReturnedTemperatureC:     sw.ReturnedTemperatureC,
+			ReturnedCycleCount:       sw.ReturnedCycleCount,
+			ReturnedDepthOfDischarge: sw.ReturnedDepthOfDischarge,
+			DistanceKmSinceLastSwap:  sw.DistanceKmSinceLastSwap,
+		})
+	}
+
+	flags, err := s.cfg.AnomalyDetector.DetectSwapAnomalies(ctx, records)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "internal_error", "swap anomaly detection failed", nil)
+		return
+	}
+	if flags == nil {
+		flags = []risk.AnomalyFlag{}
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"flags": flags})
 }
 
 func (s *Server) handlePortfolio(w http.ResponseWriter, r *http.Request) {

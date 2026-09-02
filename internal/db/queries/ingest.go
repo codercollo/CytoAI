@@ -71,6 +71,39 @@ func (s *Store) InsertRepaymentEvents(ctx context.Context, events []domain.Repay
 	return n, nil
 }
 
+// InsertSwapEvents batch-inserts swap events using COPY. It returns the number
+// of rows inserted.
+func (s *Store) InsertSwapEvents(ctx context.Context, events []domain.SwapEvent) (int64, error) {
+	if len(events) == 0 {
+		return 0, nil
+	}
+
+	rows := make([][]any, len(events))
+	for i, e := range events {
+		rows[i] = []any{
+			e.RiderID,
+			e.BatteryID,
+			nullableString(e.StationID),
+			e.SwappedAt,
+			nullableFloat(e.ReturnedStateOfCharge),
+			nullableFloat(e.ReturnedTemperatureC),
+			nullableInt(e.ReturnedCycleCount),
+			nullableFloat(e.ReturnedDepthOfDischarge),
+			nullableFloat(e.DistanceKmSinceLastSwap),
+		}
+	}
+
+	n, err := s.pool.CopyFrom(ctx,
+		pgx.Identifier{"swap_events"},
+		[]string{"rider_id", "battery_id", "station_id", "swapped_at", "returned_state_of_charge", "returned_temperature_c", "returned_cycle_count", "returned_depth_of_discharge", "distance_km_since_last_swap"},
+		pgx.CopyFromRows(rows),
+	)
+	if err != nil {
+		return 0, fmt.Errorf("queries: insert swap events: %w", err)
+	}
+	return n, nil
+}
+
 func nullableString(p *string) any {
 	if p == nil {
 		return nil

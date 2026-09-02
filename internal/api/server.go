@@ -25,10 +25,12 @@ func (s *Server) Routes() http.Handler {
 
 		r.Post("/telematics", s.handleIngestTelematics)
 		r.Post("/repayments", s.handleIngestRepayments)
+		r.Post("/swaps", s.handleIngestSwaps)
 		r.Post("/score", s.handleScoreCompute)
 		r.Post("/score/rescore-all", s.handleRescoreAll)
 		r.Get("/score/{rider_id}", s.handleScoreGet)
 		r.Get("/portfolio", s.handlePortfolio)
+		r.Get("/operator/stress-flags", s.handleOperatorStressFlags)
 
 		r.Get("/riders", s.handleRiderList)
 		r.Post("/riders", s.handleRiderCreate)

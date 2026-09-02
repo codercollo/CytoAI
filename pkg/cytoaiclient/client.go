@@ -25,6 +25,8 @@ type AnomalyFlag struct {
 type ScoreResponse struct {
 	RiderID               string        `json:"rider_id"`
 	BatteryID             string        `json:"battery_id"`
+	FinancingModel        string        `json:"financing_model,omitempty"`
+	BHIContext            string        `json:"bhi_context,omitempty"`
 	BatteryHealthIndex    float64       `json:"battery_health_index"`
 	RepaymentRiskIndex    float64       `json:"repayment_risk_index"`
 	CytoScore             float64       `json:"cyto_score"`
@@ -39,6 +41,8 @@ type Score struct {
 	ID                 int64         `json:"id"`
 	RiderID            *string       `json:"rider_id,omitempty"`
 	BatteryID          *string       `json:"battery_id,omitempty"`
+	FinancingModel     string        `json:"financing_model,omitempty"`
+	BHIContext         string        `json:"bhi_context,omitempty"`
 	BatteryHealthIndex float64       `json:"battery_health_index"`
 	RepaymentRiskIndex float64       `json:"repayment_risk_index"`
 	CytoScore          float64       `json:"cyto_score"`

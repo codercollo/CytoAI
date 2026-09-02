@@ -10,6 +10,8 @@ export interface Score {
   id?: number
   rider_id?: string
   battery_id?: string
+  financing_model?: string
+  bhi_context?: string
   battery_health_index: number
   repayment_risk_index: number
   cyto_score: number
@@ -22,6 +24,10 @@ export interface PortfolioResponse {
   scores: Score[]
   limit: number
   offset: number
+}
+
+export interface StressFlagsResponse {
+  flags: AnomalyFlag[]
 }
 
 export interface RowError {
@@ -66,6 +72,7 @@ export interface LoanInfo {
   term_months?: number
   daily_installment_kes?: number
   started_at?: string
+  financing_model?: string
 }
 
 export interface ScoreSummary {
@@ -205,6 +212,11 @@ export function useCytoApi() {
 
     riderScore: (riderId: string) =>
       $fetch<Score>(`${base}/v1/score/${riderId}`, { headers: headers() }),
+
+    operatorStressFlags: () =>
+      $fetch<StressFlagsResponse>(`${base}/v1/operator/stress-flags`, {
+        headers: headers(),
+      }),
 
     uploadTelematics: async (file: File) =>
       $fetch<{ inserted: number }>(`${base}/v1/telematics`, {

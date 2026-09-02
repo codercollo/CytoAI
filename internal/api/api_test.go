@@ -12,15 +12,22 @@ import (
 type mockStore struct {
 	insertTelemetry       func(context.Context, []domain.TelemetryReading) (int64, error)
 	insertRepayment       func(context.Context, []domain.RepaymentEvent) (int64, error)
+	insertSwaps           func(context.Context, []domain.SwapEvent) (int64, error)
 	insertScore           func(context.Context, domain.Score) (int64, error)
 	latestScore           func(context.Context, string) (domain.Score, error)
 	portfolio             func(context.Context, string, int, int) ([]domain.Score, error)
 	telemetryByBattery    func(context.Context, string) ([]domain.TelemetryReading, error)
 	repaymentByLoan       func(context.Context, string) ([]domain.RepaymentEvent, error)
 	loanByRiderAndBattery func(context.Context, string, string) (domain.Loan, error)
+	latestLoanForRider    func(context.Context, string) (domain.Loan, error)
+	swapEventsByRider     func(context.Context, string) ([]domain.SwapEvent, error)
+	swapEventsByPartner   func(context.Context, string) ([]domain.SwapEvent, error)
 	resolveBatteryID      func(context.Context, string, string) (string, error)
 	resolveLoanID         func(context.Context, string, string) (string, error)
+	resolveRiderID        func(context.Context, string, string) (string, error)
+	resolveBatteryByRef   func(context.Context, string) (string, error)
 	riderBatteryPairs     func(context.Context, string) ([]domain.RiderBatteryPair, error)
+	swapNetworkRiderIDs   func(context.Context, string) ([]string, error)
 	listRiders            func(context.Context, string, int, int) ([]domain.RiderSummary, error)
 	riderByID             func(context.Context, string, string) (domain.RiderSummary, error)
 	createRider           func(context.Context, string, domain.RiderRegistration) (domain.RiderSummary, error)
@@ -38,6 +45,13 @@ func (m *mockStore) InsertRepaymentEvents(ctx context.Context, rows []domain.Rep
 		return m.insertRepayment(ctx, rows)
 	}
 	return int64(len(rows)), nil
+}
+
+func (m *mockStore) InsertSwapEvents(ctx context.Context, events []domain.SwapEvent) (int64, error) {
+	if m.insertSwaps != nil {
+		return m.insertSwaps(ctx, events)
+	}
+	return int64(len(events)), nil
 }
 
 func (m *mockStore) InsertScore(ctx context.Context, s domain.Score) (int64, error) {
@@ -82,6 +96,27 @@ func (m *mockStore) LoanByRiderAndBattery(ctx context.Context, riderID, batteryI
 	return domain.Loan{}, errors.New("not found")
 }
 
+func (m *mockStore) LatestLoanForRider(ctx context.Context, riderID string) (domain.Loan, error) {
+	if m.latestLoanForRider != nil {
+		return m.latestLoanForRider(ctx, riderID)
+	}
+	return domain.Loan{}, errors.New("not found")
+}
+
+func (m *mockStore) SwapEventsByRider(ctx context.Context, riderID string) ([]domain.SwapEvent, error) {
+	if m.swapEventsByRider != nil {
+		return m.swapEventsByRider(ctx, riderID)
+	}
+	return nil, nil
+}
+
+func (m *mockStore) SwapEventsByPartner(ctx context.Context, partnerID string) ([]domain.SwapEvent, error) {
+	if m.swapEventsByPartner != nil {
+		return m.swapEventsByPartner(ctx, partnerID)
+	}
+	return nil, nil
+}
+
 func (m *mockStore) ResolveBatteryID(ctx context.Context, partnerID, ref string) (string, error) {
 	if m.resolveBatteryID != nil {
 		return m.resolveBatteryID(ctx, partnerID, ref)
@@ -96,6 +131,20 @@ func (m *mockStore) ResolveLoanID(ctx context.Context, partnerID, ref string) (s
 	return ref, nil
 }
 
+func (m *mockStore) ResolveRiderID(ctx context.Context, partnerID, ref string) (string, error) {
+	if m.resolveRiderID != nil {
+		return m.resolveRiderID(ctx, partnerID, ref)
+	}
+	return ref, nil
+}
+
+func (m *mockStore) ResolveBatteryIDByExternalRef(ctx context.Context, ref string) (string, error) {
+	if m.resolveBatteryByRef != nil {
+		return m.resolveBatteryByRef(ctx, ref)
+	}
+	return ref, nil
+}
+
 func (m *mockStore) RiderBelongsToPartner(ctx context.Context, partnerID, riderID string) (bool, error) {
 	return true, nil
 }
@@ -103,6 +152,13 @@ func (m *mockStore) RiderBelongsToPartner(ctx context.Context, partnerID, riderI
 func (m *mockStore) RiderBatteryPairsForPartner(ctx context.Context, partnerID string) ([]domain.RiderBatteryPair, error) {
 	if m.riderBatteryPairs != nil {
 		return m.riderBatteryPairs(ctx, partnerID)
+	}
+	return nil, nil
+}
+
+func (m *mockStore) SwapNetworkRiderIDsForPartner(ctx context.Context, partnerID string) ([]string, error) {
+	if m.swapNetworkRiderIDs != nil {
+		return m.swapNetworkRiderIDs(ctx, partnerID)
 	}
 	return nil, nil
 }

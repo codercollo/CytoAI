@@ -1,15 +1,16 @@
 {
-  "roc_auc": 0.8148148148148148,
-  "base_default_rate": 0.21666666666666667,
-  "n_train": 48,
-  "n_test": 12,
+  "roc_auc": 0.76,
+  "base_default_rate": 0.255,
+  "n_train": 160,
+  "n_test": 40,
   "coefficients": {
-    "on_time_ratio": -0.5477658384397399,
-    "avg_days_late": 0.6612477559470712,
-    "payment_cadence_proxy": -0.7229582694590349,
-    "loan_to_battery_value_ratio": -0.25167301735850583,
+    "on_time_ratio": -0.6771561165169293,
+    "avg_days_late": 0.09891768222761278,
+    "payment_cadence_proxy": 0.22353280801452102,
+    "loan_to_battery_value_ratio": 0.33426319188576753,
     "tenure_days": 0.0,
-    "telemetry_cadence_proxy": -0.13071740837483342
+    "telemetry_cadence_proxy": -0.10152279916202037,
+    "battery_stress_profile": 0.12287062876327323
   },
   "feature_notes": {
     "payment_cadence_proxy": "proxy for usage/income derived from repayment cadence; NOT telemetry-confirmed battery swaps",

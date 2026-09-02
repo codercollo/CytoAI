@@ -10,6 +10,12 @@ const score = computed(() => rider.value?.latest_score ?? null)
 const factors = computed(() => rider.value?.factors)
 const flags = computed<AnomalyFlag[]>(() => rider.value?.anomaly_flags ?? [])
 
+// For swap_network loans the BHI describes the fleet/pool the rider draws
+// from, not a single collateral battery — label it distinctly so a reader
+// does not mistake fleet health for "this rider's battery".
+const isSwapNetwork = computed(() => rider.value?.loan?.financing_model === 'swap_network')
+const bhiLabel = computed(() => (isSwapNetwork.value ? 'Fleet/Pool Health (BHI)' : 'Battery Health (BHI)'))
+
 async function load() {
   const res = await req.run(() => api.rider(route.params.id as string))
   if (res) rider.value = res
@@ -80,7 +86,7 @@ const tempOk = computed(() => {
       <!-- Score gauges row -->
       <div class="grid gap-6 md:grid-cols-3">
         <div class="glass-card flex flex-col items-center justify-center"><ScoreGauge :value="score.cyto_score ?? 0" label="Combined CytoScore" /></div>
-        <div class="glass-card flex flex-col items-center justify-center"><ScoreGauge :value="score.battery_health_index ?? 0" label="Battery Health Index" /></div>
+        <div class="glass-card flex flex-col items-center justify-center"><ScoreGauge :value="score.battery_health_index ?? 0" :label="bhiLabel" /></div>
         <div class="glass-card flex flex-col items-center justify-center"><ScoreGauge :value="100 - (score.repayment_risk_index ?? 0)" label="Repayment Safety Index" /></div>
       </div>
 
@@ -96,7 +102,7 @@ const tempOk = computed(() => {
             <h2 class="mb-4 text-sm font-semibold text-slate-200 uppercase tracking-wider">Evaluation Details</h2>
             <div class="divide-y divide-slate-800 text-xs">
               <div class="py-3 flex justify-between">
-                <span class="text-slate-400">Battery Health (BHI)</span>
+                <span class="text-slate-400">{{ bhiLabel }}</span>
                 <span class="font-mono font-semibold text-slate-200">{{ (score.battery_health_index ?? 0).toFixed(1) }}</span>
               </div>
               <div class="py-3 flex justify-between">

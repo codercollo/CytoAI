@@ -21,6 +21,7 @@ class FieldSpec:
     name: str
     min_value: float | None = None
     max_value: float | None = None
+    required: bool = True
 
 
 BATTERY_FIELDS = [
@@ -38,6 +39,9 @@ REPAYMENT_FIELDS = [
     FieldSpec("loan_to_battery_value_ratio", min_value=0),
     FieldSpec("tenure_days", min_value=0),
     FieldSpec("telemetry_cadence_proxy", min_value=0),
+    # Swap-network-only stress profile. Now a trained feature (Phase 6 retrain):
+    # required, and 0.0 for leased_fixed callers (Go always sends it).
+    FieldSpec("battery_stress_profile", min_value=0),
 ]
 
 
@@ -50,7 +54,8 @@ def validate_payload(payload: dict, fields: list[FieldSpec]) -> dict[str, float]
 
     for field in fields:
         if field.name not in payload:
-            errors[field.name] = "required"
+            if field.required:
+                errors[field.name] = "required"
             continue
         value = payload[field.name]
         try:

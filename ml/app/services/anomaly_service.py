@@ -17,6 +17,14 @@ from datetime import date, datetime
 SEVERITY_HIGH = "high"
 SEVERITY_MEDIUM = "medium"
 
+# Swap-network stress thresholds (documented, not magic). A rider is flagged
+# when their most recent swaps average more than this many fleet standard
+# deviations above the fleet mean on temperature or depth-of-discharge,
+# sustained across at least SWAP_STRESS_MIN_SWAPS swaps.
+SWAP_STRESS_Z_CUTOFF = 1.5
+SWAP_STRESS_MIN_SWAPS = 3
+SWAP_STRESS_RECENT_LIMIT = 10
+
 # Physical/plausibility bounds. Temperature matches score_schema.py.
 SOC_MIN, SOC_MAX = 0.0, 100.0
 TEMP_MIN_C, TEMP_MAX_C = -40.0, 100.0
@@ -44,6 +52,20 @@ def _num(value):
     if math.isnan(v):
         return None
     return v
+
+
+def _mean(values):
+    if not values:
+        return 0.0
+    return sum(values) / len(values)
+
+
+def _sample_std(values):
+    if len(values) < 2:
+        return 0.0
+    m = _mean(values)
+    var = sum((v - m) ** 2 for v in values) / (len(values) - 1)
+    return math.sqrt(var)
 
 
 def _coerce_date(value):
@@ -202,6 +224,66 @@ def detect_repayment_anomalies(records) -> list[dict]:
     return flags
 
 
-def detect(telemetry=None, repayments=None) -> list[dict]:
+def detect_swap_anomalies(records) -> list[dict]:
+    """Flag riders with sustained swap-network thermal or DoD stress.
+
+    Fleet statistics are computed over the uploaded batch (a true fleet
+    baseline would come from persisted history). A rider is flagged only when
+    their most recent swaps average more than SWAP_STRESS_Z_CUTOFF fleet
+    standard deviations above the fleet mean, sustained across at least
+    SWAP_STRESS_MIN_SWAPS swaps. Non-gating, same as all anomaly flags.
+    """
+    records = list(records or [])
+    if not records:
+        return []
+
+    def _values(rows, key):
+        out: list[float] = []
+        for r in rows:
+            if not isinstance(r, dict):
+                continue
+            v = _num(r.get(key))
+            if v is not None:
+                out.append(v)
+        return out
+
+    fleet_temp = _values(records, "returned_temperature_c")
+    fleet_dod = _values(records, "returned_depth_of_discharge")
+    fleet_temp_mean = _mean(fleet_temp)
+    fleet_temp_std = _sample_std(fleet_temp)
+    fleet_dod_mean = _mean(fleet_dod)
+    fleet_dod_std = _sample_std(fleet_dod)
+
+    by_rider: dict = {}
+    for r in records:
+        if isinstance(r, dict) and r.get("rider_id") is not None:
+            by_rider.setdefault(r["rider_id"], []).append(r)
+
+    flags: list[dict] = []
+    for rider_id, rows in by_rider.items():
+        # Most recent swaps last; None/unparseable dates treated as very old.
+        ordered = sorted(rows, key=lambda item: _coerce_date(item.get("swapped_at")) or date.min)
+        recent = ordered[-SWAP_STRESS_RECENT_LIMIT:]
+
+        recent_temp = _values(recent, "returned_temperature_c")
+        recent_dod = _values(recent, "returned_depth_of_discharge")
+
+        if len(recent_temp) >= SWAP_STRESS_MIN_SWAPS and fleet_temp_std > 0:
+            if (_mean(recent_temp) - fleet_temp_mean) > SWAP_STRESS_Z_CUTOFF * fleet_temp_std:
+                flags.append(_flag(
+                    "rider", str(rider_id), "swap_thermal_stress", SEVERITY_MEDIUM,
+                    f"rider's returned batteries run hotter than fleet average across last {len(recent_temp)} swaps — possible overloading/misuse",
+                ))
+        if len(recent_dod) >= SWAP_STRESS_MIN_SWAPS and fleet_dod_std > 0:
+            if (_mean(recent_dod) - fleet_dod_mean) > SWAP_STRESS_Z_CUTOFF * fleet_dod_std:
+                flags.append(_flag(
+                    "rider", str(rider_id), "swap_deep_discharge_stress", SEVERITY_MEDIUM,
+                    f"rider's returned batteries come back more deeply discharged than fleet average across last {len(recent_dod)} swaps — possible over-discharge/misuse",
+                ))
+
+    return flags
+
+
+def detect(telemetry=None, repayments=None, swaps=None) -> list[dict]:
     """Run all anomaly rules and return a list of flag dicts (never rejects)."""
-    return detect_telemetry_anomalies(telemetry) + detect_repayment_anomalies(repayments)
+    return detect_telemetry_anomalies(telemetry) + detect_repayment_anomalies(repayments) + detect_swap_anomalies(swaps)

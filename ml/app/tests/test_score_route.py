@@ -29,6 +29,7 @@ VALID_REPAYMENT_PAYLOAD = {
     "loan_to_battery_value_ratio": 1.1,
     "tenure_days": 300,
     "telemetry_cadence_proxy": 0.35,
+    "battery_stress_profile": 0.0,
 }
 
 
@@ -75,6 +76,17 @@ def test_predict_battery_out_of_range(client):
 
 def test_predict_repayment_success(client):
     resp = client.post("/predict/repayment", json=VALID_REPAYMENT_PAYLOAD)
+    if resp.status_code == 503:
+        pytest.skip("repayment model artifact not trained in this environment")
+    assert resp.status_code == 200
+    body = resp.get_json()
+    assert 0 <= body["repayment_risk_index"] <= 100
+
+
+def test_predict_repayment_accepts_battery_stress_profile(client):
+    payload = dict(VALID_REPAYMENT_PAYLOAD)
+    payload["battery_stress_profile"] = 3.362
+    resp = client.post("/predict/repayment", json=payload)
     if resp.status_code == 503:
         pytest.skip("repayment model artifact not trained in this environment")
     assert resp.status_code == 200

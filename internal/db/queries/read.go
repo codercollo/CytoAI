@@ -90,14 +90,15 @@ func (s *Store) LoanByRiderAndBattery(ctx context.Context, riderID, batteryID st
 		daily                   *float64
 		term                    *int
 		started                 *time.Time
+		financingModel          *string
 	)
 	err := s.pool.QueryRow(ctx, `
-		SELECT id::text, rider_id::text, battery_id::text, principal_kes, battery_value_kes, term_months, daily_installment_kes, started_at
+		SELECT id::text, rider_id::text, battery_id::text, principal_kes, battery_value_kes, term_months, daily_installment_kes, started_at, financing_model
 		FROM loans
 		WHERE rider_id = $1 AND battery_id = $2
 		ORDER BY started_at DESC NULLS LAST
 		LIMIT 1`, riderID, batteryID,
-	).Scan(&l.ID, &l.RiderID, &batteryOut, &principal, &batteryValue, &term, &daily, &started)
+	).Scan(&l.ID, &l.RiderID, &batteryOut, &principal, &batteryValue, &term, &daily, &started, &financingModel)
 	if err != nil {
 		return domain.Loan{}, fmt.Errorf("queries: loan by rider and battery: %w", err)
 	}
@@ -107,5 +108,38 @@ func (s *Store) LoanByRiderAndBattery(ctx context.Context, riderID, batteryID st
 	l.TermMonths = term
 	l.DailyInstallmentKes = daily
 	l.StartedAt = started
+	l.FinancingModel = financingModel
+	return l, nil
+}
+
+// LatestLoanForRider returns the most recent loan for a rider regardless of
+// battery (used for swap_network loans where battery_id is NULL).
+func (s *Store) LatestLoanForRider(ctx context.Context, riderID string) (domain.Loan, error) {
+	var (
+		l                       domain.Loan
+		batteryOut              *string
+		principal, batteryValue *float64
+		daily                   *float64
+		term                    *int
+		started                 *time.Time
+		financingModel          *string
+	)
+	err := s.pool.QueryRow(ctx, `
+		SELECT id::text, rider_id::text, battery_id::text, principal_kes, battery_value_kes, term_months, daily_installment_kes, started_at, financing_model
+		FROM loans
+		WHERE rider_id = $1
+		ORDER BY started_at DESC NULLS LAST
+		LIMIT 1`, riderID,
+	).Scan(&l.ID, &l.RiderID, &batteryOut, &principal, &batteryValue, &term, &daily, &started, &financingModel)
+	if err != nil {
+		return domain.Loan{}, fmt.Errorf("queries: latest loan for rider: %w", err)
+	}
+	l.BatteryID = batteryOut
+	l.PrincipalKes = principal
+	l.BatteryValueKes = batteryValue
+	l.TermMonths = term
+	l.DailyInstallmentKes = daily
+	l.StartedAt = started
+	l.FinancingModel = financingModel
 	return l, nil
 }

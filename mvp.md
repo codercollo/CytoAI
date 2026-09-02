@@ -6,12 +6,16 @@ document describes only the e-boda MVP as it exists today.
 
 ## 1. Data Ingestion
 
-The platform accepts two core data sources:
+The platform accepts three core data sources:
 
 - **Repayment events** — loan payments, due dates, payment status, and payment delays.
-- **Battery telemetry** — state of charge, voltage, temperature, cycle count, depth of discharge, and usage data.
+- **Battery telemetry** — state of charge, voltage, temperature, cycle count, depth of discharge, and usage data (leased/fixed batteries).
+- **Swap events** — one row per physical battery swap (swap networks), with the returned battery's state of charge, temperature, cycle count, depth of discharge, and distance since last swap.
 
-Data is uploaded through CSV files and stored in **PostgreSQL** using the same schema that will later support real partner data.
+Cyto supports both financing models: **swap networks are the primary model**
+(Spiro-style shared fleets), with **leased/fixed** batteries fully supported as
+the secondary model. Data is uploaded through CSV files and stored in
+**PostgreSQL** using the same schema that will later support real partner data.
 
 ---
 
@@ -37,6 +41,10 @@ Where:
 ### Battery Health Index (BHI)
 
 The BHI model analyzes battery telemetry and usage patterns to estimate the battery's current state of health.
+
+For swap networks, BHI is computed at fleet/pool level from swap events (an
+operator/fleet-health signal); for leased/fixed batteries it remains the single
+battery's own health.
 
 **Output:**
 
@@ -95,6 +103,12 @@ POST /v1/repayments
 ```
 
 Ingest repayment events.
+
+```text
+POST /v1/swaps
+```
+
+Ingest swap-network battery swap events.
 
 ```text
 POST /v1/score

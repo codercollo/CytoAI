@@ -1,9 +1,10 @@
 """Loads and serves the Repayment Risk Index (RRI) model artifact.
 
-The feature list is read from the artifact's ``feature_names`` key and currently
-includes on_time_ratio, avg_days_late, payment_cadence_proxy,
-loan_to_battery_value_ratio, tenure_days, and telemetry_cadence_proxy (the
-Feature A swap-cadence signal).
+The feature list is read from the artifact's ``feature_names`` key and includes
+on_time_ratio, avg_days_late, payment_cadence_proxy,
+loan_to_battery_value_ratio, tenure_days, telemetry_cadence_proxy (the Feature A
+swap-cadence signal), and battery_stress_profile (swap_network-only, added in
+the Phase 6 retrain).
 """
 from __future__ import annotations
 
