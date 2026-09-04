@@ -28,10 +28,6 @@ for i in $(seq 1 30); do
 	sleep 2
 done
 
-echo "==> Running pending migrations"
-docker compose -f "$COMPOSE_FILE" --env-file .env run --rm api /app/cytoai migrate up || \
-	bash "$APP_DIR/scripts/migrate.sh"
-
 echo "==> Pruning old images"
 docker image prune -f
 
