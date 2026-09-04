@@ -3,10 +3,10 @@ ml/data/battery/**
 ml/data/repayment/**
 ml/data/synthetic/**
 !ml/data/**/.gitkeep
-ml/artifacts/*.joblib
+
 
 # Go
-/cmd/**/cytoai
+/cmd/cytoai/cytoai
 *.exe
 
 # Node / Nuxt
