@@ -17,7 +17,19 @@ export interface Score {
   cyto_score: number
   scored_at?: string
   model_version?: string
+  battery_model_version?: string
+  repayment_model_version?: string
   anomaly_flags?: AnomalyFlag[]
+}
+
+export interface ScoreRequest {
+  rider_id: string
+  battery_id?: string
+}
+
+export interface ScoreResponse extends Score {
+  insufficient_data?: boolean
+  reason?: string
 }
 
 export interface PortfolioResponse {
@@ -45,13 +57,13 @@ export interface ChartPoint {
 
 export interface RescoreSkipped {
   rider_id: string
-  battery_id: string
+  battery_id?: string
   reason: string
 }
 
 export interface RescoreResponse {
   scored: number
-  skipped: RescoreSkipped[]
+  skipped?: RescoreSkipped[] | null
 }
 
 export type RegistrationStatus = 'registered' | 'linked'
@@ -100,6 +112,8 @@ export interface Factors {
     loan_to_battery_value_ratio: number
     tenure_days: number
     telemetry_cadence_proxy: number
+    battery_stress_profile?: number
+    financing_model?: string
   }
 }
 
@@ -230,6 +244,23 @@ export function useCytoApi() {
         method: 'POST',
         body: await file.text(),
         headers: headers({ 'Content-Type': 'text/csv' }),
+      }),
+
+    uploadSwaps: async (file: File) =>
+      $fetch<{ inserted: number }>(`${base}/v1/swaps`, {
+        method: 'POST',
+        body: await file.text(),
+        headers: headers({ 'Content-Type': 'text/csv' }),
+      }),
+
+    computeScore: (riderId: string, batteryId?: string) =>
+      $fetch<ScoreResponse>(`${base}/v1/score`, {
+        method: 'POST',
+        body: JSON.stringify({
+          rider_id: riderId,
+          ...(batteryId ? { battery_id: batteryId } : {}),
+        }),
+        headers: headers({ 'Content-Type': 'application/json' }),
       }),
 
     rescoreAll: () =>

@@ -192,13 +192,22 @@ function modeButtonClass(mode: 'linked' | 'identity'): string {
       </button>
     </div>
 
+    <!-- Auth Error Re-entry Card -->
+    <AuthErrorCard
+      v-if="listReq.error?.kind === 'auth'"
+      class="mb-6"
+      title="Authentication Failed (401/403)"
+      message="Your partner API key is missing or invalid. Enter your key below to load riders."
+      @retry="load"
+    />
+
     <div class="glass-card overflow-x-auto p-0 border border-slate-800">
       <table class="w-full text-sm">
         <thead class="bg-slate-900/60 border-b border-slate-800/60 font-sans text-xs uppercase tracking-wider text-slate-400">
           <tr>
             <th class="px-5 py-3.5 text-left font-semibold">Rider</th>
             <th class="px-5 py-3.5 text-left font-semibold">Status</th>
-            <th class="px-5 py-3.5 text-left font-semibold">Battery</th>
+            <th class="px-5 py-3.5 text-left font-semibold">Battery / Fleet</th>
             <th class="px-5 py-3.5 text-left font-semibold">Loan</th>
             <th class="px-5 py-3.5 text-right font-semibold">CytoScore</th>
             <th class="px-5 py-3.5 text-right font-semibold">Actions</th>
@@ -227,7 +236,12 @@ function modeButtonClass(mode: 'linked' | 'identity'): string {
               </span>
             </td>
             <td class="px-5 py-4 text-slate-300">
-              <template v-if="r.battery">
+              <template v-if="r.loan?.financing_model === 'swap_network'">
+                <span class="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium bg-emerald-950/50 text-emerald-400 border border-emerald-800/40 font-sans">
+                  Shared Fleet Pool
+                </span>
+              </template>
+              <template v-else-if="r.battery">
                 <div>{{ r.battery.external_ref || '—' }}</div>
                 <div v-if="r.battery.manufacturer" class="text-xs text-slate-500">{{ r.battery.manufacturer }}</div>
               </template>
@@ -235,7 +249,15 @@ function modeButtonClass(mode: 'linked' | 'identity'): string {
             </td>
             <td class="px-5 py-4 text-slate-300">
               <template v-if="r.loan">
-                <div>{{ r.loan.external_ref || '—' }}</div>
+                <div class="flex items-center gap-2">
+                  <span>{{ r.loan.external_ref || '—' }}</span>
+                  <span
+                    class="rounded px-1.5 py-0.2 text-[9px] font-medium border"
+                    :class="r.loan.financing_model === 'swap_network' ? 'bg-emerald-950/60 text-emerald-400 border-emerald-800/40' : 'bg-slate-800 text-slate-400 border-slate-700'"
+                  >
+                    {{ r.loan.financing_model === 'swap_network' ? 'Swap' : 'Lease' }}
+                  </span>
+                </div>
                 <div v-if="r.loan.principal_kes != null" class="text-xs text-slate-500">KES {{ r.loan.principal_kes.toLocaleString() }}</div>
               </template>
               <span v-else class="text-slate-600">—</span>
@@ -254,10 +276,10 @@ function modeButtonClass(mode: 'linked' | 'identity'): string {
               <div class="flex items-center justify-end gap-2">
                 <NuxtLink
                   v-if="r.registration_status === 'linked'"
-                  :to="`/upload?rider_id=${r.id}`"
+                  :to="`/riders/${r.id}`"
                   class="inline-flex items-center rounded-lg border border-indigo-700/40 bg-indigo-600/10 px-3 py-1.5 text-xs font-semibold text-indigo-400 transition-colors hover:bg-indigo-600/20"
                 >
-                  Score
+                  {{ r.latest_score ? 'Appraisal' : 'Score' }}
                 </NuxtLink>
                 <button
                   v-else

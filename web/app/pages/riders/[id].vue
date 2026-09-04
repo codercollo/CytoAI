@@ -1,10 +1,14 @@
 <script setup lang="ts">
-import type { RiderResponse, ChartPoint, AnomalyFlag } from '~/composables/useCytoApi'
+import type { RiderResponse, ChartPoint, AnomalyFlag, ScoreResponse } from '~/composables/useCytoApi'
 
 const route = useRoute()
 const api = useCytoApi()
+const toast = useToast()
 const req = useCytoRequest<RiderResponse>()
+const computeReq = useCytoRequest<ScoreResponse>()
+
 const rider = ref<RiderResponse | null>(null)
+const insufficientReason = ref<string | null>(null)
 
 const score = computed(() => rider.value?.latest_score ?? null)
 const factors = computed(() => rider.value?.factors)
@@ -17,8 +21,27 @@ const isSwapNetwork = computed(() => rider.value?.loan?.financing_model === 'swa
 const bhiLabel = computed(() => (isSwapNetwork.value ? 'Fleet/Pool Health (BHI)' : 'Battery Health (BHI)'))
 
 async function load() {
+  insufficientReason.value = null
   const res = await req.run(() => api.rider(route.params.id as string))
   if (res) rider.value = res
+}
+
+async function triggerComputeScore() {
+  if (!rider.value) return
+  insufficientReason.value = null
+  toast.info('Computing score for rider…')
+  const res = await computeReq.run(() =>
+    api.computeScore(rider.value!.id, rider.value?.battery?.id)
+  )
+  if (res) {
+    if (res.insufficient_data) {
+      insufficientReason.value = res.reason || 'Insufficient history to compute a fair score.'
+      toast.warning(`Not enough data to score: ${res.reason || 'Insufficient records'}`)
+    } else {
+      toast.success(`Score computed: CytoScore ${res.cyto_score.toFixed(1)}`)
+      await load()
+    }
+  }
 }
 
 onMounted(load)
@@ -55,7 +78,17 @@ const tempOk = computed(() => {
       Back to Portfolio
     </NuxtLink>
 
-    <div v-if="req.pending" class="mt-8 text-slate-400">Loading appraisal metrics…</div>
+    <!-- Auth Error Re-entry Card -->
+    <AuthErrorCard
+      v-if="req.error?.kind === 'auth'"
+      class="mt-6"
+      title="Authentication Failed (401/403)"
+      message="Your partner API key is missing or unauthorized to view this rider. Enter your key below."
+      @retry="load"
+    />
+
+    <div v-else-if="req.pending" class="mt-8 text-slate-400">Loading appraisal metrics…</div>
+
     <div v-else-if="req.error" class="mt-8">
       <p class="text-rose-400">{{ req.error.message }}</p>
       <button
@@ -72,14 +105,54 @@ const tempOk = computed(() => {
           <h1 class="text-2xl font-bold tracking-tight text-slate-100">
             Rider Appraisal Profile
           </h1>
-          <p class="text-sm text-slate-400 mt-1">
-            Reference ID: <span class="font-mono text-indigo-400 bg-indigo-950/40 px-2 py-0.5 rounded border border-indigo-900/30 text-xs">{{ route.params.id }}</span>
-          </p>
+          <div class="mt-1 flex flex-wrap items-center gap-2 text-sm text-slate-400">
+            <span>Reference ID:</span>
+            <span class="font-mono text-indigo-400 bg-indigo-950/40 px-2 py-0.5 rounded border border-indigo-900/30 text-xs">{{ route.params.id }}</span>
+            <span v-if="rider.external_ref" class="text-xs text-slate-500">({{ rider.external_ref }})</span>
+          </div>
         </div>
-        <div class="flex items-center gap-2 text-xs text-slate-400 bg-slate-900/60 border border-slate-800 rounded-lg px-3 py-1.5 self-start">
-          <span class="inline-block h-2 w-2 rounded-full bg-emerald-500"></span>
-          <span>Model Version: {{ score?.model_version || 'N/A' }}</span>
+        <div class="flex flex-wrap items-center gap-2">
+          <!-- Financing model badge -->
+          <span
+            class="rounded px-2.5 py-1 text-xs font-semibold border"
+            :class="isSwapNetwork ? 'bg-emerald-950/60 text-emerald-400 border-emerald-800/40' : 'bg-indigo-950/60 text-indigo-400 border-indigo-800/40'"
+          >
+            {{ isSwapNetwork ? 'Swap Network (Shared Fleet)' : 'Leased Fixed (Dedicated)' }}
+          </span>
+
+          <div class="flex items-center gap-2 text-xs text-slate-400 bg-slate-900/60 border border-slate-800 rounded-lg px-3 py-1.5">
+            <span class="inline-block h-2 w-2 rounded-full bg-emerald-500"></span>
+            <span>Model: {{ score?.model_version || 'v1.0' }}</span>
+          </div>
+
+          <button
+            :disabled="computeReq.pending.value"
+            class="inline-flex items-center gap-1.5 rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-semibold text-white transition-all hover:bg-indigo-500 active:bg-indigo-700 shadow-sm disabled:opacity-50"
+            @click="triggerComputeScore"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="w-3.5 h-3.5">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0 3.181 3.183a8.25 8.25 0 0 0 13.803-3.7M4.031 9.865a8.25 8.25 0 0 1 13.803-3.7l3.181 3.182m0-4.991v4.99" />
+            </svg>
+            {{ computeReq.pending.value ? 'Scoring…' : (score ? 'Re-compute Score' : 'Compute Score') }}
+          </button>
         </div>
+      </div>
+
+      <!-- Insufficient Data Notification Banner -->
+      <div
+        v-if="insufficientReason"
+        class="mb-6 rounded-xl border border-amber-800/40 bg-amber-950/20 p-4 text-xs text-amber-300"
+      >
+        <div class="flex items-center gap-2 font-semibold text-amber-200 mb-1">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="w-4 h-4 text-amber-400">
+            <path fill-rule="evenodd" d="M18 10a8 8 0 1 1-16 0 8 8 0 0 1 16 0Zm-7-4a1 1 0 1 1-2 0 1 1 0 0 1 2 0ZM9 9a.75.75 0 0 0 0 1.5h.253a.25.25 0 0 1 .244.304l-.459 2.066A1.75 1.75 0 0 0 10.747 15H11a.75.75 0 0 0 0-1.5h-.253a.25.25 0 0 1-.244-.304l.459-2.066A1.75 1.75 0 0 0 9.253 9H9Z" clip-rule="evenodd" />
+          </svg>
+          Thin-File Assessment: Insufficient History to Score Fairly
+        </div>
+        <p>{{ insufficientReason }}</p>
+        <p class="mt-2 text-[11px] text-slate-400">
+          Under bias-monitoring policy (spec.md §9), thin-file riders are protected from arbitrary low scores until sufficient operational history is ingested.
+        </p>
       </div>
 
       <template v-if="score">
@@ -94,13 +167,21 @@ const tempOk = computed(() => {
       <div class="grid gap-6 md:grid-cols-3 mt-6">
         <div class="glass-card md:col-span-2">
           <h2 class="mb-4 text-sm font-semibold text-slate-200 uppercase tracking-wider">Risk Trend History</h2>
-          <DegradationChart :points="points" />
+          <DegradationChart :points="points" :bhi-label="bhiLabel" />
         </div>
 
         <div class="glass-card flex flex-col justify-between">
           <div>
             <h2 class="mb-4 text-sm font-semibold text-slate-200 uppercase tracking-wider">Evaluation Details</h2>
             <div class="divide-y divide-slate-800 text-xs">
+              <div class="py-3 flex justify-between">
+                <span class="text-slate-400">Financing Model</span>
+                <span class="font-semibold text-slate-200">{{ isSwapNetwork ? 'Swap Network' : 'Leased Fixed' }}</span>
+              </div>
+              <div class="py-3 flex justify-between">
+                <span class="text-slate-400">BHI Scope</span>
+                <span class="font-mono text-slate-200">{{ isSwapNetwork ? 'Shared Fleet Pool' : 'Dedicated Battery' }}</span>
+              </div>
               <div class="py-3 flex justify-between">
                 <span class="text-slate-400">{{ bhiLabel }}</span>
                 <span class="font-mono font-semibold text-slate-200">{{ (score.battery_health_index ?? 0).toFixed(1) }}</span>
@@ -153,6 +234,11 @@ const tempOk = computed(() => {
                 <span class="font-bold text-slate-600">•</span>
                 <span>{{ (factors.repayment.tenure_days ?? 0).toFixed(0) }} days tenure</span>
               </li>
+              <!-- Swap-network specific factor: battery stress profile vs fleet -->
+              <li v-if="isSwapNetwork && factors.repayment.battery_stress_profile != null" class="flex items-center gap-2">
+                <span class="font-bold text-emerald-400">•</span>
+                <span>Fleet stress profile {{ (factors.repayment.battery_stress_profile ?? 0).toFixed(2) }} (relative to fleet)</span>
+              </li>
             </ul>
           </div>
 
@@ -167,7 +253,9 @@ const tempOk = computed(() => {
           </div>
 
           <div>
-            <h3 class="mb-3 text-xs font-semibold text-indigo-400 uppercase tracking-wider">Battery</h3>
+            <h3 class="mb-3 text-xs font-semibold text-indigo-400 uppercase tracking-wider">
+              {{ isSwapNetwork ? 'Fleet Battery Pool' : 'Collateral Battery' }}
+            </h3>
             <ul class="space-y-2 text-xs text-slate-300">
               <li class="flex items-center gap-2">
                 <span v-if="tempOk" class="font-bold text-emerald-400">✓</span><span v-else class="font-bold text-amber-400">!</span>
@@ -204,8 +292,35 @@ const tempOk = computed(() => {
       </div>
       </template>
 
-      <div v-else class="mt-8 text-slate-400">
-        No score yet — upload telemetry and repayment data to score this rider.
+      <!-- Empty state when no score exists for rider yet -->
+      <div v-else class="glass-card mt-8 p-8 text-center border border-slate-800">
+        <div class="mx-auto flex h-10 w-10 items-center justify-center rounded-full bg-slate-900 border border-slate-800 text-slate-400 mb-3">
+          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-5 h-5">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m9-.75a9 9 0 1 1-18 0 9 9 0 0 1 18 0Zm-9 3.75h.008v.008H12v-.008Z" />
+          </svg>
+        </div>
+        <h3 class="text-sm font-semibold text-slate-200">No Score Appraisal Record Yet</h3>
+        <p class="mt-1 text-xs text-slate-400 max-w-sm mx-auto">
+          This rider has not been evaluated yet. You can trigger an on-demand score calculation or ingest telemetry / repayments.
+        </p>
+        <div class="mt-4 flex items-center justify-center gap-3">
+          <button
+            :disabled="computeReq.pending.value"
+            class="inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 text-xs font-semibold text-white transition-all hover:bg-indigo-500 shadow-sm disabled:opacity-50"
+            @click="triggerComputeScore"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="w-3.5 h-3.5">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 13.5l10.5-11.25L12 10.5h8.25L9.75 21.75 12 13.5H3.75z" />
+            </svg>
+            {{ computeReq.pending.value ? 'Computing Score…' : 'Compute Score Now' }}
+          </button>
+          <NuxtLink
+            to="/upload"
+            class="inline-flex items-center gap-2 rounded-lg border border-slate-700 px-4 py-2 text-xs font-semibold text-slate-300 transition-colors hover:bg-slate-800/50"
+          >
+            Upload Data
+          </NuxtLink>
+        </div>
       </div>
     </template>
   </div>

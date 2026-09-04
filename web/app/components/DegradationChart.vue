@@ -1,7 +1,15 @@
 <script setup lang="ts">
 import type { ChartPoint } from '~/composables/useCytoApi'
 
-const props = defineProps<{ points: ChartPoint[] }>()
+const props = withDefaults(
+  defineProps<{
+    points: ChartPoint[]
+    bhiLabel?: string
+  }>(),
+  {
+    bhiLabel: 'Battery Health Index (BHI)',
+  }
+)
 
 const W = 600
 const H = 240
@@ -54,7 +62,7 @@ function line(key: 'bhi' | 'rri'): string {
     </svg>
 
     <div class="mt-3 flex items-center gap-5 font-sans text-xs font-medium text-slate-400">
-      <span class="flex items-center gap-2"><span class="inline-block h-2 w-2 rounded-full bg-indigo-500"></span> Battery Health Index (BHI)</span>
+      <span class="flex items-center gap-2"><span class="inline-block h-2 w-2 rounded-full bg-indigo-500"></span> {{ bhiLabel }}</span>
       <span class="flex items-center gap-2"><span class="inline-block h-2 w-2 rounded-full bg-emerald-500"></span> Repayment Risk Index (RRI)</span>
     </div>
 

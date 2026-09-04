@@ -1,19 +1,22 @@
 <script setup lang="ts">
 const toast = useToast();
-const apiKey = ref("");
+const { apiKey, setApiKey } = useApiKey();
 const hydrated = ref(false);
 const lastWasEmpty = ref(true);
 let keyDebounce: ReturnType<typeof setTimeout> | undefined;
 
 onMounted(() => {
-  apiKey.value = localStorage.getItem("cyto_api_key") || "";
   lastWasEmpty.value = apiKey.value === "";
   hydrated.value = true;
 });
 
 watch(apiKey, (v) => {
   if (import.meta.client) {
-    localStorage.setItem("cyto_api_key", v);
+    if (v) {
+      localStorage.setItem("cyto_api_key", v);
+    } else {
+      localStorage.removeItem("cyto_api_key");
+    }
   }
 
   // Only toast on real user edits, not the initial hydration set above.
