@@ -1,10 +1,22 @@
-# Cyto AI — local dev reverse proxy.
-# TLS is intentionally a no-op here; for production, point Caddy at a real
-# domain and it will provision Let's Encrypt certificates automatically.
+# Cyto AI — production reverse proxy.
+#
+# OPTION A — you have a domain pointed at 169.58.236.118 (recommended):
+# Replace the block below with your domain and Caddy auto-provisions
+# Let's Encrypt TLS on first boot. Example:
+#
+#   cytoai.yourdomain.com {
+#       reverse_proxy /v1/* api:8080
+#       reverse_proxy /healthz api:8080
+#       reverse_proxy /readyz api:8080
+#       reverse_proxy web:3000
+#   }
+#
+# OPTION B — no domain yet, access by raw IP over plain HTTP (what's active
+# below). Switch to Option A as soon as you point a domain at the VPS.
 
 :80 {
-	reverse_proxy go-api:8080
-
-	# Phase 12: route dashboard paths to the Nuxt app, e.g.
-	# reverse_proxy /dashboard/* web:3000
+reverse_proxy /v1/* api:8080
+reverse_proxy /healthz api:8080
+reverse_proxy /readyz api:8080
+reverse_proxy web:3000
 }
