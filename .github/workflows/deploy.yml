@@ -7,8 +7,6 @@ on:
 
 env:
   REGISTRY: ghcr.io
-  API_IMAGE_NAME: ${{ github.repository }}-api
-  WEB_IMAGE_NAME: ${{ github.repository }}-web
 
 jobs:
   build-and-push:
@@ -32,11 +30,15 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Compute image tags
+      - name: Compute lowercase image names + tags
         id: tags
         run: |
-          echo "api_image=${REGISTRY}/${API_IMAGE_NAME}:${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
-          echo "web_image=${REGISTRY}/${WEB_IMAGE_NAME}:${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+          API_NAME=$(echo "${{ github.repository }}-api" | tr '[:upper:]' '[:lower:]')
+          WEB_NAME=$(echo "${{ github.repository }}-web" | tr '[:upper:]' '[:lower:]')
+          echo "api_name=$API_NAME" >> "$GITHUB_OUTPUT"
+          echo "web_name=$WEB_NAME" >> "$GITHUB_OUTPUT"
+          echo "api_image=${{ env.REGISTRY }}/$API_NAME:${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+          echo "web_image=${{ env.REGISTRY }}/$WEB_NAME:${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
 
       - name: Build + push API image (Go API + ML sidecar)
         uses: docker/build-push-action@v6
@@ -45,8 +47,8 @@ jobs:
           file: build/Dockerfile.api
           push: true
           tags: |
-            ${{ env.REGISTRY }}/${{ env.API_IMAGE_NAME }}:${{ github.sha }}
-            ${{ env.REGISTRY }}/${{ env.API_IMAGE_NAME }}:latest
+            ${{ env.REGISTRY }}/${{ steps.tags.outputs.api_name }}:${{ github.sha }}
+            ${{ env.REGISTRY }}/${{ steps.tags.outputs.api_name }}:latest
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
@@ -59,8 +61,8 @@ jobs:
           build-args: |
             NUXT_API_BASE=http://api:8080
           tags: |
-            ${{ env.REGISTRY }}/${{ env.WEB_IMAGE_NAME }}:${{ github.sha }}
-            ${{ env.REGISTRY }}/${{ env.WEB_IMAGE_NAME }}:latest
+            ${{ env.REGISTRY }}/${{ steps.tags.outputs.web_name }}:${{ github.sha }}
+            ${{ env.REGISTRY }}/${{ steps.tags.outputs.web_name }}:latest
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
@@ -74,10 +76,9 @@ jobs:
           host: ${{ secrets.CONTABO_HOST }}
           username: ${{ secrets.CONTABO_USER }}
           key: ${{ secrets.CONTABO_SSH_KEY }}
-          envs: API_IMAGE,WEB_IMAGE
           script: |
-            export API_IMAGE="${{ env.REGISTRY }}/${{ env.API_IMAGE_NAME }}:${{ github.sha }}"
-            export WEB_IMAGE="${{ env.REGISTRY }}/${{ env.WEB_IMAGE_NAME }}:${{ github.sha }}"
+            export API_IMAGE="${{ needs.build-and-push.outputs.api_image }}"
+            export WEB_IMAGE="${{ needs.build-and-push.outputs.web_image }}"
             echo "${{ secrets.GHCR_PAT }}" | docker login ghcr.io -u "${{ secrets.GHCR_USERNAME }}" --password-stdin
             cd /opt/cytoai
             grep -q '^API_IMAGE=' .env 2>/dev/null && sed -i "s|^API_IMAGE=.*|API_IMAGE=$API_IMAGE|" .env || echo "API_IMAGE=$API_IMAGE" >> .env
