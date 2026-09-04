@@ -24,7 +24,7 @@ jobs:
         with:
           python-version: "3.12"
       - run: pip install -r ml/requirements.txt
-      - run: pytest ml/app/tests -v
+      - run: python -m pytest ml/app/tests -v
 
   web-build:
     runs-on: ubuntu-latest
