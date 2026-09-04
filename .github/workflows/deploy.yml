@@ -37,8 +37,8 @@ jobs:
           WEB_NAME=$(echo "${{ github.repository }}-web" | tr '[:upper:]' '[:lower:]')
           echo "api_name=$API_NAME" >> "$GITHUB_OUTPUT"
           echo "web_name=$WEB_NAME" >> "$GITHUB_OUTPUT"
-          echo "api_image=${{ env.REGISTRY }}/$API_NAME:${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
-          echo "web_image=${{ env.REGISTRY }}/$WEB_NAME:${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+          echo "api_image=${{ env.REGISTRY }}/$API_NAME:${{ github.sha }}" >> "$GITHUB_OUTPUT"
+          echo "web_image=${{ env.REGISTRY }}/$WEB_NAME:${{ github.sha }}" >> "$GITHUB_OUTPUT"
 
       - name: Build + push API image (Go API + ML sidecar)
         uses: docker/build-push-action@v6
