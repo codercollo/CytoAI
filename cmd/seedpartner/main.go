@@ -29,6 +29,11 @@ func main() {
 		dsn = "postgres://cyto:cyto@localhost:5433/cytoai?sslmode=disable"
 	}
 
+	partnerName := demoPartnerName
+	if v := os.Getenv("SEED_PARTNER_NAME"); v != "" {
+		partnerName = v
+	}
+
 	ctx := context.Background()
 	conn, err := pgx.Connect(ctx, dsn)
 	if err != nil {
@@ -36,8 +41,8 @@ func main() {
 	}
 	defer conn.Close(ctx)
 
-	// Idempotent: wipe any previous demo data first.
-	if err := resetDemo(ctx, conn); err != nil {
+	// Idempotent: wipe any previous data for THIS partner name first.
+	if err := resetDemo(ctx, conn, partnerName); err != nil {
 		log.Fatal(err)
 	}
 
@@ -53,7 +58,7 @@ func main() {
 	var partnerID string
 	if err := conn.QueryRow(ctx,
 		`INSERT INTO partners (name, api_key_hash) VALUES ($1, $2) RETURNING id`,
-		demoPartnerName, hash,
+		partnerName, hash,
 	).Scan(&partnerID); err != nil {
 		log.Fatal(err)
 	}
@@ -92,7 +97,7 @@ func main() {
 	}
 
 	fmt.Println("Demo data seeded:")
-	fmt.Println("  Partner:   ", demoPartnerName, "(", partnerID, ")")
+	fmt.Println("  Partner:   ", partnerName, "(", partnerID, ")")
 	fmt.Println("  Rider:     ", demoRiderRef)
 	fmt.Println("  Batteries: ", demoBatteryRefs)
 	fmt.Println("  Loans:     ", "loan_0001, loan_0002")
@@ -103,9 +108,10 @@ func main() {
 	fmt.Println("Now upload test/testdata/sample_telematics.csv and sample_repayments.csv.")
 }
 
-// resetDemo removes any prior demo partner and everything linked to it, so
-// re-running this seed is safe and does not create duplicate external_refs.
-func resetDemo(ctx context.Context, conn *pgx.Conn) error {
+// resetDemo removes any prior data for the given partner name and everything
+// linked to it, so re-running this seed is safe and does not create
+// duplicate external_refs.
+func resetDemo(ctx context.Context, conn *pgx.Conn, partnerName string) error {
 	stmts := []string{
 		`DELETE FROM repayment_events WHERE loan_id IN (SELECT id FROM loans WHERE external_ref IN ('loan_0001','loan_0002'))`,
 		`DELETE FROM telemetry_readings WHERE battery_id IN (SELECT id FROM batteries WHERE external_ref IN ('battery_0001','battery_0002'))`,
@@ -113,14 +119,13 @@ func resetDemo(ctx context.Context, conn *pgx.Conn) error {
 		`DELETE FROM loans WHERE external_ref IN ('loan_0001','loan_0002')`,
 		`DELETE FROM riders WHERE external_ref = 'rider_0001'`,
 		`DELETE FROM batteries WHERE external_ref IN ('battery_0001','battery_0002')`,
-		`DELETE FROM partners WHERE name = $1`,
 	}
-	for _, stmt := range stmts[:len(stmts)-1] {
+	for _, stmt := range stmts {
 		if _, err := conn.Exec(ctx, stmt); err != nil {
 			return err
 		}
 	}
-	if _, err := conn.Exec(ctx, stmts[len(stmts)-1], demoPartnerName); err != nil {
+	if _, err := conn.Exec(ctx, `DELETE FROM partners WHERE name = $1`, partnerName); err != nil {
 		return err
 	}
 	return nil

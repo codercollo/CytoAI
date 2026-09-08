@@ -7,6 +7,7 @@ RUN go mod download
 
 COPY . .
 RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /out/cytoai ./cmd/cytoai
+RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /out/seedpartner ./cmd/seedpartner
 
 # --- runtime stage ----------------------------------------------------------
 # Python base so the Flask ML sidecar can be co-located with the Go API and
@@ -30,8 +31,12 @@ COPY ml/requirements.txt /app/ml/requirements.txt
 RUN pip install --no-cache-dir -r /app/ml/requirements.txt
 COPY ml/ /app/ml/
 
-# Go binary + example config (env vars override DSN/ports at runtime).
+# Go binaries + example config (env vars override DSN/ports at runtime).
+# seedpartner is an operator tool run via `docker compose run --entrypoint`,
+# never started by supervisord — it has no listening port and isn't part of
+# the normal request path.
 COPY --from=gobuild /out/cytoai /app/cytoai
+COPY --from=gobuild /out/seedpartner /app/seedpartner
 COPY configs/config.example.yaml /app/configs/config.example.yaml
 
 # Co-located process supervisor.
