@@ -35,6 +35,7 @@ type loanCreateRequest struct {
 	TermMonths          *int     `json:"term_months,omitempty"`
 	DailyInstallmentKes *float64 `json:"daily_installment_kes,omitempty"`
 	StartedAt           *string  `json:"started_at,omitempty"`
+	FinancingModel      *string  `json:"financing_model,omitempty"`
 }
 
 type riderCreateRequest struct {
@@ -151,6 +152,15 @@ func (req riderCreateRequest) toRegistration() (domain.RiderRegistration, error)
 	ref := strings.TrimSpace(req.ExternalRef)
 	reg := domain.RiderRegistration{ExternalRef: &ref}
 
+	if req.Loan != nil && req.Loan.FinancingModel != nil && strings.TrimSpace(*req.Loan.FinancingModel) == "swap_network" {
+		l, err := req.Loan.toDomain()
+		if err != nil {
+			return domain.RiderRegistration{}, err
+		}
+		reg.Loan = &l
+		return reg, nil
+	}
+
 	if (req.Battery == nil) != (req.Loan == nil) {
 		return domain.RiderRegistration{}, fmt.Errorf("battery and loan must be provided together")
 	}
@@ -197,6 +207,7 @@ func (l loanCreateRequest) toDomain() (domain.LoanRegistration, error) {
 		BatteryValueKes:     l.BatteryValueKes,
 		TermMonths:          l.TermMonths,
 		DailyInstallmentKes: l.DailyInstallmentKes,
+		FinancingModel:      l.FinancingModel,
 	}
 	if l.StartedAt != nil {
 		t, err := time.Parse("2006-01-02", strings.TrimSpace(*l.StartedAt))
@@ -208,8 +219,11 @@ func (l loanCreateRequest) toDomain() (domain.LoanRegistration, error) {
 	if l.PrincipalKes == nil || *l.PrincipalKes <= 0 {
 		return out, fmt.Errorf("loan.principal_kes is required and must be positive")
 	}
-	if l.BatteryValueKes == nil || *l.BatteryValueKes <= 0 {
-		return out, fmt.Errorf("loan.battery_value_kes is required and must be positive")
+	isSwap := l.FinancingModel != nil && strings.TrimSpace(*l.FinancingModel) == "swap_network"
+	if !isSwap {
+		if l.BatteryValueKes == nil || *l.BatteryValueKes <= 0 {
+			return out, fmt.Errorf("loan.battery_value_kes is required and must be positive")
+		}
 	}
 	if l.TermMonths != nil && *l.TermMonths <= 0 {
 		return out, fmt.Errorf("loan.term_months must be positive")
@@ -325,4 +339,93 @@ func isDuplicateRiderRef(err error) bool {
 	return errors.As(err, &pgErr) &&
 		pgErr.Code == "23505" &&
 		pgErr.ConstraintName == "riders_partner_external_ref_unique"
+}
+
+// riderLinkRequest is the body accepted by PATCH /v1/riders/{rider_id}/link.
+type riderLinkRequest struct {
+	Battery batteryCreateRequest `json:"battery"`
+	Loan    loanCreateRequest    `json:"loan"`
+}
+
+// handleRiderLink handles PATCH /v1/riders/{rider_id}/link.
+// It upgrades an identity-only ("registered") rider to "linked" by creating a
+// battery and loan and associating them. It is idempotent-safe: attempting to
+// link an already-linked rider returns 409 with a clear error rather than
+// silently overwriting the existing battery/loan.
+func (s *Server) handleRiderLink(w http.ResponseWriter, r *http.Request) {
+	riderID := chi.URLParam(r, "rider_id")
+	if strings.TrimSpace(riderID) == "" {
+		writeError(w, http.StatusBadRequest, "invalid_request", "rider_id is required", nil)
+		return
+	}
+
+	var req riderLinkRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid_request", err.Error(), nil)
+		return
+	}
+
+	battery, err := req.Battery.toDomain()
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid_request", err.Error(), nil)
+		return
+	}
+	loan, err := req.Loan.toDomain()
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid_request", err.Error(), nil)
+		return
+	}
+
+	partnerID := partnerIDFrom(r.Context())
+	summary, err := s.cfg.Store.LinkRider(r.Context(), partnerID, riderID, battery, loan)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) || strings.Contains(err.Error(), "link rider fetch") {
+			writeError(w, http.StatusNotFound, "not_found", "rider not found or does not belong to this partner", nil)
+			return
+		}
+		if strings.Contains(err.Error(), "already has a loan linked") {
+			writeError(w, http.StatusConflict, "already_linked", "this rider already has a battery and loan linked; use a separate endpoint to update them", nil)
+			return
+		}
+		writeError(w, http.StatusInternalServerError, "internal_error", "failed to link rider", nil)
+		return
+	}
+
+	writeJSON(w, http.StatusOK, toRiderResponse(summary))
+}
+
+// containsAnyStr is a small helper used to match error strings without
+// importing strings again (it is already imported at the top of the file).
+func containsAnyStr(s string, sub string) bool {
+	return strings.Contains(s, sub)
+}
+
+// handleBatteryCreate handles POST /v1/batteries to register a bare fleet/pool battery.
+func (s *Server) handleBatteryCreate(w http.ResponseWriter, r *http.Request) {
+	var req batteryCreateRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid_request", err.Error(), nil)
+		return
+	}
+	reg, err := req.toDomain()
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid_request", err.Error(), nil)
+		return
+	}
+	if reg.ExternalRef == nil || strings.TrimSpace(*reg.ExternalRef) == "" {
+		writeError(w, http.StatusBadRequest, "invalid_request", "external_ref is required", nil)
+		return
+	}
+	battery, err := s.cfg.Store.CreateBattery(r.Context(), reg)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "internal_error", "failed to create battery", nil)
+		return
+	}
+	writeJSON(w, http.StatusCreated, batteryInfo{
+		ID:              battery.ID,
+		ExternalRef:     battery.ExternalRef,
+		Manufacturer:    battery.Manufacturer,
+		RatedCapacityWh: battery.RatedCapacityWh,
+		CommissionedAt:  battery.CommissionedAt,
+	})
 }

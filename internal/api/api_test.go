@@ -31,6 +31,8 @@ type mockStore struct {
 	listRiders            func(context.Context, string, int, int) ([]domain.RiderSummary, error)
 	riderByID             func(context.Context, string, string) (domain.RiderSummary, error)
 	createRider           func(context.Context, string, domain.RiderRegistration) (domain.RiderSummary, error)
+	linkRider             func(context.Context, string, string, domain.BatteryRegistration, domain.LoanRegistration) (domain.RiderSummary, error)
+	createBattery         func(context.Context, domain.BatteryRegistration) (domain.Battery, error)
 }
 
 func (m *mockStore) InsertTelemetryReadings(ctx context.Context, rows []domain.TelemetryReading) (int64, error) {
@@ -182,6 +184,24 @@ func (m *mockStore) CreateRider(ctx context.Context, partnerID string, reg domai
 		return m.createRider(ctx, partnerID, reg)
 	}
 	return domain.RiderSummary{}, nil
+}
+
+func (m *mockStore) LinkRider(ctx context.Context, partnerID, riderID string, battery domain.BatteryRegistration, loan domain.LoanRegistration) (domain.RiderSummary, error) {
+	if m.linkRider != nil {
+		return m.linkRider(ctx, partnerID, riderID, battery, loan)
+	}
+	return domain.RiderSummary{}, nil
+}
+
+func (m *mockStore) CreateBattery(ctx context.Context, battery domain.BatteryRegistration) (domain.Battery, error) {
+	if m.createBattery != nil {
+		return m.createBattery(ctx, battery)
+	}
+	ext := ""
+	if battery.ExternalRef != nil {
+		ext = *battery.ExternalRef
+	}
+	return domain.Battery{ID: "b-gen-" + ext, ExternalRef: battery.ExternalRef}, nil
 }
 
 type mockScorer struct {

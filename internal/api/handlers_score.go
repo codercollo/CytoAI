@@ -442,6 +442,11 @@ func (s *Server) handleOperatorStressFlags(w http.ResponseWriter, r *http.Reques
 		})
 	}
 
+	if len(records) == 0 {
+		writeJSON(w, http.StatusOK, map[string]any{"flags": []risk.AnomalyFlag{}})
+		return
+	}
+
 	flags, err := s.cfg.AnomalyDetector.DetectSwapAnomalies(ctx, records)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "internal_error", "swap anomaly detection failed", nil)

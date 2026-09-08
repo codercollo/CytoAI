@@ -31,6 +31,14 @@ const authError = computed(() => {
   )
 })
 
+function hasUnknownRefError(errors: RowError[]): boolean {
+  return errors.some(
+    (e) =>
+      e.error?.toLowerCase().includes('unknown external ref') ||
+      e.error?.toLowerCase().includes('unresolved'),
+  )
+}
+
 async function runRescoreAll() {
   if (scoring.value) return
   scoring.value = true
@@ -107,16 +115,16 @@ async function uploadSwaps(file: File) {
 
 <template>
   <div>
-    <div class="mb-6 flex items-start justify-between gap-4">
+    <div class="mb-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
       <div>
-        <h1 class="text-2xl font-bold tracking-tight text-slate-100">Data Ingestion Portal</h1>
-        <p class="mt-1 text-sm text-slate-400">
+        <h1 class="text-xl sm:text-2xl font-bold tracking-tight text-slate-100">Data Ingestion Portal</h1>
+        <p class="mt-1 text-xs sm:text-sm text-slate-400">
           Ingest telematics, battery swaps, and repayment events via CSV files to run score models. Batch validation will reject malformed rows with per-row diagnostics.
         </p>
       </div>
       <button
         :disabled="scoring"
-        class="inline-flex shrink-0 items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white transition-all hover:bg-indigo-500 active:bg-indigo-700 shadow-sm disabled:cursor-not-allowed disabled:opacity-50"
+        class="inline-flex shrink-0 items-center justify-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white transition-all hover:bg-indigo-500 active:bg-indigo-700 shadow-sm disabled:cursor-not-allowed disabled:opacity-50"
         @click="runRescoreAll"
       >
         <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="w-4 h-4">
@@ -135,7 +143,22 @@ async function uploadSwaps(file: File) {
       @retry="runRescoreAll"
     />
 
-    <div class="grid gap-6 lg:grid-cols-3 md:grid-cols-2">
+    <!-- Ingestion Prerequisite Banner -->
+    <div class="mb-6 flex items-start gap-3 rounded-xl border border-indigo-800/40 bg-indigo-950/30 p-4 text-xs text-indigo-200">
+      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-5 h-5 shrink-0 text-indigo-400">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M11.25 11.25l.041-.02a.75.75 0 011.063.852l-.708 2.836a.75.75 0 001.063.853l.041-.021M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-9-3.75h.008v.008H12V8.25z" />
+      </svg>
+      <div>
+        <div class="font-semibold text-indigo-100 mb-0.5">Entity Registration Prerequisite</div>
+        <p class="text-slate-300">
+          IDs in this file must already exist as registered riders/batteries/loans for your partner account — register them on the
+          <NuxtLink to="/riders" class="font-medium text-indigo-400 underline hover:text-indigo-300">Riders page</NuxtLink>
+          first, then upload data referencing those exact reference names.
+        </p>
+      </div>
+    </div>
+
+    <div class="grid gap-6 grid-cols-1 md:grid-cols-2 lg:grid-cols-3">
       <!-- Telemetry Upload (Leased Fixed / Dedicated Battery) -->
       <div class="glass-card flex flex-col justify-between">
         <div>
@@ -162,6 +185,15 @@ async function uploadSwaps(file: File) {
               {{ er.error }}
             </li>
           </ul>
+          <div v-if="hasUnknownRefError(telemetryErrors)" class="mt-3 pt-2 border-t border-rose-900/40 text-[11px]">
+            <NuxtLink
+              to="/riders"
+              class="inline-flex items-center gap-1.5 font-semibold text-indigo-400 hover:text-indigo-300 hover:underline"
+            >
+              <span>Register missing riders or batteries on the Riders page</span>
+              <span>&rarr;</span>
+            </NuxtLink>
+          </div>
         </div>
       </div>
 
@@ -191,6 +223,15 @@ async function uploadSwaps(file: File) {
               {{ er.error }}
             </li>
           </ul>
+          <div v-if="hasUnknownRefError(swapsErrors)" class="mt-3 pt-2 border-t border-rose-900/40 text-[11px]">
+            <NuxtLink
+              to="/riders"
+              class="inline-flex items-center gap-1.5 font-semibold text-indigo-400 hover:text-indigo-300 hover:underline"
+            >
+              <span>Register missing riders or batteries on the Riders page</span>
+              <span>&rarr;</span>
+            </NuxtLink>
+          </div>
         </div>
       </div>
 
@@ -220,6 +261,15 @@ async function uploadSwaps(file: File) {
               {{ er.error }}
             </li>
           </ul>
+          <div v-if="hasUnknownRefError(repaymentErrors)" class="mt-3 pt-2 border-t border-rose-900/40 text-[11px]">
+            <NuxtLink
+              to="/riders"
+              class="inline-flex items-center gap-1.5 font-semibold text-indigo-400 hover:text-indigo-300 hover:underline"
+            >
+              <span>Register missing riders or loans on the Riders page</span>
+              <span>&rarr;</span>
+            </NuxtLink>
+          </div>
         </div>
       </div>
     </div>

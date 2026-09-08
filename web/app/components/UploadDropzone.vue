@@ -22,7 +22,7 @@ function onPick(e: Event) {
 
 <template>
   <div
-    class="cursor-pointer p-8 text-center transition-all border-dashed border-2 rounded-xl hover:border-indigo-500/50 hover:bg-indigo-950/5"
+    class="cursor-pointer p-5 sm:p-8 text-center transition-all border-dashed border-2 rounded-xl hover:border-indigo-500/50 hover:bg-indigo-950/5"
     :class="dragging ? 'border-indigo-500 bg-indigo-950/20' : 'border-slate-800 bg-[#0e1626]'"
     @dragover.prevent="dragging = true"
     @dragleave.prevent="dragging = false"

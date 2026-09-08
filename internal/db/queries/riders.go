@@ -86,11 +86,16 @@ func (s *Store) CreateRider(ctx context.Context, partnerID string, reg domain.Ri
 			return domain.RiderSummary{}, fmt.Errorf("queries: insert battery: %w", err)
 		}
 
+		finModel := "leased_fixed"
+		if reg.Loan.FinancingModel != nil && *reg.Loan.FinancingModel != "" {
+			finModel = *reg.Loan.FinancingModel
+		}
+
 		var l domain.Loan
 		if err := tx.QueryRow(ctx, `
-			INSERT INTO loans (external_ref, rider_id, battery_id, principal_kes, battery_value_kes, term_months, daily_installment_kes, started_at)
-			VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-			RETURNING id::text, external_ref, rider_id::text, battery_id::text, principal_kes, battery_value_kes, term_months, daily_installment_kes, started_at`,
+			INSERT INTO loans (external_ref, rider_id, battery_id, principal_kes, battery_value_kes, term_months, daily_installment_kes, started_at, financing_model)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+			RETURNING id::text, external_ref, rider_id::text, battery_id::text, principal_kes, battery_value_kes, term_months, daily_installment_kes, started_at, financing_model`,
 			nullableString(reg.Loan.ExternalRef),
 			summary.Rider.ID,
 			b.ID,
@@ -99,16 +104,118 @@ func (s *Store) CreateRider(ctx context.Context, partnerID string, reg domain.Ri
 			nullableInt(reg.Loan.TermMonths),
 			nullableFloat(reg.Loan.DailyInstallmentKes),
 			nullableTime(reg.Loan.StartedAt),
-		).Scan(&l.ID, &l.ExternalRef, &l.RiderID, &l.BatteryID, &l.PrincipalKes, &l.BatteryValueKes, &l.TermMonths, &l.DailyInstallmentKes, &l.StartedAt); err != nil {
+			finModel,
+		).Scan(&l.ID, &l.ExternalRef, &l.RiderID, &l.BatteryID, &l.PrincipalKes, &l.BatteryValueKes, &l.TermMonths, &l.DailyInstallmentKes, &l.StartedAt, &l.FinancingModel); err != nil {
 			return domain.RiderSummary{}, fmt.Errorf("queries: insert loan: %w", err)
 		}
 		summary.Battery = &b
+		summary.Loan = &l
+	} else if reg.Loan != nil {
+		finModel := "swap_network"
+		if reg.Loan.FinancingModel != nil && *reg.Loan.FinancingModel != "" {
+			finModel = *reg.Loan.FinancingModel
+		}
+
+		var l domain.Loan
+		if err := tx.QueryRow(ctx, `
+			INSERT INTO loans (external_ref, rider_id, battery_id, principal_kes, battery_value_kes, term_months, daily_installment_kes, started_at, financing_model)
+			VALUES ($1, $2, NULL, $3, $4, $5, $6, $7, $8)
+			RETURNING id::text, external_ref, rider_id::text, battery_id::text, principal_kes, battery_value_kes, term_months, daily_installment_kes, started_at, financing_model`,
+			nullableString(reg.Loan.ExternalRef),
+			summary.Rider.ID,
+			nullableFloat(reg.Loan.PrincipalKes),
+			nullableFloat(reg.Loan.BatteryValueKes),
+			nullableInt(reg.Loan.TermMonths),
+			nullableFloat(reg.Loan.DailyInstallmentKes),
+			nullableTime(reg.Loan.StartedAt),
+			finModel,
+		).Scan(&l.ID, &l.ExternalRef, &l.RiderID, &l.BatteryID, &l.PrincipalKes, &l.BatteryValueKes, &l.TermMonths, &l.DailyInstallmentKes, &l.StartedAt, &l.FinancingModel); err != nil {
+			return domain.RiderSummary{}, fmt.Errorf("queries: insert loan: %w", err)
+		}
 		summary.Loan = &l
 	}
 
 	if err := tx.Commit(ctx); err != nil {
 		return domain.RiderSummary{}, fmt.Errorf("queries: commit create rider: %w", err)
 	}
+	return summary, nil
+}
+
+// ErrRiderAlreadyLinked is returned by LinkRider when the rider already has a
+// loan — preventing silent overwrite through the link endpoint.
+var ErrRiderAlreadyLinked = fmt.Errorf("queries: rider already has a loan linked")
+
+// LinkRider attaches a new battery and loan to an existing identity-only rider.
+// It verifies partner ownership and that the rider has no existing loan (to
+// prevent silent overwrite). On success it returns the updated RiderSummary.
+func (s *Store) LinkRider(ctx context.Context, partnerID, riderID string, battery domain.BatteryRegistration, loan domain.LoanRegistration) (domain.RiderSummary, error) {
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return domain.RiderSummary{}, fmt.Errorf("queries: begin link rider: %w", err)
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	// Verify ownership and fetch the rider row inside the transaction so the
+	// check and the inserts are serialised on the same connection.
+	var summary domain.RiderSummary
+	var onboarded *time.Time
+	if err := tx.QueryRow(ctx, `
+		SELECT id::text, external_ref, onboarded_at
+		FROM riders
+		WHERE id::text = $1 AND partner_id = $2`,
+		riderID, partnerID,
+	).Scan(&summary.Rider.ID, &summary.Rider.ExternalRef, &onboarded); err != nil {
+		return domain.RiderSummary{}, fmt.Errorf("queries: link rider fetch: %w", err)
+	}
+	summary.Rider.OnboardedAt = onboarded
+
+	// Guard: reject if a loan already exists for this rider.
+	var loanCount int
+	if err := tx.QueryRow(ctx, `SELECT COUNT(*) FROM loans WHERE rider_id = $1`, riderID).Scan(&loanCount); err != nil {
+		return domain.RiderSummary{}, fmt.Errorf("queries: link rider loan check: %w", err)
+	}
+	if loanCount > 0 {
+		return domain.RiderSummary{}, ErrRiderAlreadyLinked
+	}
+
+	// Insert battery.
+	var b domain.Battery
+	if err := tx.QueryRow(ctx, `
+		INSERT INTO batteries (external_ref, manufacturer, rated_capacity_wh, commissioned_at)
+		VALUES ($1, $2, $3, $4)
+		RETURNING id::text, external_ref, manufacturer, rated_capacity_wh, commissioned_at`,
+		nullableString(battery.ExternalRef),
+		nullableString(battery.Manufacturer),
+		nullableFloat(battery.RatedCapacityWh),
+		nullableTime(battery.CommissionedAt),
+	).Scan(&b.ID, &b.ExternalRef, &b.Manufacturer, &b.RatedCapacityWh, &b.CommissionedAt); err != nil {
+		return domain.RiderSummary{}, fmt.Errorf("queries: link rider insert battery: %w", err)
+	}
+
+	// Insert loan linked to the existing rider + new battery.
+	var l domain.Loan
+	if err := tx.QueryRow(ctx, `
+		INSERT INTO loans (external_ref, rider_id, battery_id, principal_kes, battery_value_kes, term_months, daily_installment_kes, started_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+		RETURNING id::text, external_ref, rider_id::text, battery_id::text, principal_kes, battery_value_kes, term_months, daily_installment_kes, started_at`,
+		nullableString(loan.ExternalRef),
+		summary.Rider.ID,
+		b.ID,
+		nullableFloat(loan.PrincipalKes),
+		nullableFloat(loan.BatteryValueKes),
+		nullableInt(loan.TermMonths),
+		nullableFloat(loan.DailyInstallmentKes),
+		nullableTime(loan.StartedAt),
+	).Scan(&l.ID, &l.ExternalRef, &l.RiderID, &l.BatteryID, &l.PrincipalKes, &l.BatteryValueKes, &l.TermMonths, &l.DailyInstallmentKes, &l.StartedAt); err != nil {
+		return domain.RiderSummary{}, fmt.Errorf("queries: link rider insert loan: %w", err)
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return domain.RiderSummary{}, fmt.Errorf("queries: commit link rider: %w", err)
+	}
+
+	summary.Battery = &b
+	summary.Loan = &l
 	return summary, nil
 }
 
@@ -240,4 +347,22 @@ func scanRiderSummary(scan func(dest ...any) error) (domain.RiderSummary, error)
 	}
 
 	return out, nil
+}
+
+// CreateBattery inserts a bare battery row (e.g. for fleet/swap pools).
+func (s *Store) CreateBattery(ctx context.Context, reg domain.BatteryRegistration) (domain.Battery, error) {
+	var b domain.Battery
+	err := s.pool.QueryRow(ctx, `
+		INSERT INTO batteries (external_ref, manufacturer, rated_capacity_wh, commissioned_at)
+		VALUES ($1, $2, $3, $4)
+		RETURNING id::text, external_ref, manufacturer, rated_capacity_wh, commissioned_at`,
+		nullableString(reg.ExternalRef),
+		nullableString(reg.Manufacturer),
+		nullableFloat(reg.RatedCapacityWh),
+		nullableTime(reg.CommissionedAt),
+	).Scan(&b.ID, &b.ExternalRef, &b.Manufacturer, &b.RatedCapacityWh, &b.CommissionedAt)
+	if err != nil {
+		return domain.Battery{}, fmt.Errorf("queries: create battery: %w", err)
+	}
+	return b, nil
 }

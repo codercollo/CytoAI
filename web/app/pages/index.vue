@@ -55,7 +55,7 @@ const hasSwapNetwork = computed(() => {
       (s) =>
         s.financing_model === "swap_network" ||
         s.bhi_context === "fleet" ||
-        !s.battery_id
+        !s.battery_id,
     )
   )
     return true;
@@ -68,7 +68,7 @@ const isAuthError = computed(
   () =>
     req.error.value?.kind === "auth" ||
     ridersReq.error.value?.kind === "auth" ||
-    stressReq.error.value?.kind === "auth"
+    stressReq.error.value?.kind === "auth",
 );
 
 const errorMessage = computed(() => req.error.value?.message || "");
@@ -87,17 +87,18 @@ function riskClass(v: number): string {
 
 <template>
   <div>
-    <div class="mb-6 flex items-center justify-between">
+    <div class="mb-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
       <div>
-        <h1 class="text-2xl font-bold tracking-tight text-slate-100">
+        <h1 class="text-xl sm:text-2xl font-bold tracking-tight text-slate-100">
           Portfolio Credit &amp; Battery Risks
         </h1>
-        <p class="mt-1 text-sm text-slate-400">
-          Overview of Kenyan EV asset portfolios, loan repayment risk, and battery health appraisals.
+        <p class="mt-1 text-xs sm:text-sm text-slate-400">
+          Overview of Kenyan EV asset portfolios, loan repayment risk, and
+          battery health appraisals.
         </p>
       </div>
       <button
-        class="inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white transition-all hover:bg-indigo-500 active:bg-indigo-700 shadow-sm"
+        class="inline-flex shrink-0 items-center justify-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white transition-all hover:bg-indigo-500 active:bg-indigo-700 shadow-sm"
         @click="load"
       >
         <svg
@@ -130,7 +131,7 @@ function riskClass(v: number): string {
     <!-- General Error banner (only when a refresh failed but we still have existing data) -->
     <div
       v-else-if="errorMessage && scores.length > 0"
-      class="mb-6 flex items-center justify-between gap-4 rounded-lg bg-rose-950/20 border border-rose-900/30 p-3 text-xs text-rose-300"
+      class="mb-6 flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-lg bg-rose-950/20 border border-rose-900/30 p-3 text-xs text-rose-300"
     >
       <span>
         {{ errorMessage }}
@@ -145,9 +146,14 @@ function riskClass(v: number): string {
     </div>
 
     <!-- Quick stats overview row -->
-    <div v-if="scores.length > 0" class="grid grid-cols-1 md:grid-cols-3 gap-5 mb-6">
+    <div
+      v-if="scores.length > 0"
+      class="grid grid-cols-1 sm:grid-cols-3 gap-4 sm:gap-5 mb-6"
+    >
       <div class="glass-card flex flex-col justify-between py-4">
-        <span class="text-xs font-semibold text-slate-400 uppercase tracking-wider">
+        <span
+          class="text-xs font-semibold text-slate-400 uppercase tracking-wider"
+        >
           Total Scored Riders
         </span>
         <span class="text-3xl font-bold text-slate-100 mt-2">
@@ -155,7 +161,9 @@ function riskClass(v: number): string {
         </span>
       </div>
       <div class="glass-card flex flex-col justify-between py-4">
-        <span class="text-xs font-semibold text-slate-400 uppercase tracking-wider">
+        <span
+          class="text-xs font-semibold text-slate-400 uppercase tracking-wider"
+        >
           Average CytoScore
         </span>
         <span class="text-3xl font-bold text-indigo-400 mt-2">
@@ -168,7 +176,9 @@ function riskClass(v: number): string {
         </span>
       </div>
       <div class="glass-card flex flex-col justify-between py-4">
-        <span class="text-xs font-semibold text-slate-400 uppercase tracking-wider">
+        <span
+          class="text-xs font-semibold text-slate-400 uppercase tracking-wider"
+        >
           High Risk Count (&lt;40)
         </span>
         <span class="text-3xl font-bold text-rose-400 mt-2">
@@ -178,16 +188,35 @@ function riskClass(v: number): string {
     </div>
 
     <!-- Main Content Area: Loading, Error, Table, or Empty State -->
-    <div v-if="req.pending && scores.length === 0" class="glass-card px-5 py-12 text-center text-slate-400 border border-slate-800">
-      <svg class="mx-auto h-6 w-6 animate-spin text-indigo-500 mb-3" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 0 1 8-8v4a4 4 0 0 0-4 4H4z"></path>
+    <div
+      v-if="req.pending && scores.length === 0"
+      class="glass-card px-5 py-12 text-center text-slate-400 border border-slate-800"
+    >
+      <svg
+        class="mx-auto h-6 w-6 animate-spin text-indigo-500 mb-3"
+        xmlns="http://www.w3.org/2000/svg"
+        fill="none"
+        viewBox="0 0 24 24"
+      >
+        <circle
+          class="opacity-25"
+          cx="12"
+          cy="12"
+          r="10"
+          stroke="currentColor"
+          stroke-width="4"
+        ></circle>
+        <path
+          class="opacity-75"
+          fill="currentColor"
+          d="M4 12a8 8 0 0 1 8-8v4a4 4 0 0 0-4 4H4z"
+        ></path>
       </svg>
       Loading portfolio assessments…
     </div>
 
     <div
-      v-else-if="req.error && scores.length === 0 && !isAuthError"
+      v-else-if="req.error.value && scores.length === 0 && !isAuthError"
       class="glass-card px-5 py-10 text-center border border-slate-800"
     >
       <p class="text-rose-400">{{ errorMessage }}</p>
@@ -204,14 +233,31 @@ function riskClass(v: number): string {
       v-else-if="scores.length === 0 && !req.pending"
       class="glass-card px-6 py-12 text-center border border-slate-800"
     >
-      <div class="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-slate-900 border border-slate-800 text-slate-400 mb-3">
-        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6">
-          <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 3v11.25A2.25 2.25 0 0 0 6 16.5h2.25M3.75 3h-1.5m1.5 0h16.5m0 0h1.5m-1.5 0v11.25A2.25 2.25 0 0 1 18 16.5h-2.25m-7.5 0h7.5m-7.5 0-1 3m8.5-3 1 3m0 0 .5 1.5m-.5-1.5h-9.5m0 0-.5 1.5m.75-9 3-3 2.143 2.143L15.429 8.25" />
+      <div
+        class="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-slate-900 border border-slate-800 text-slate-400 mb-3"
+      >
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          fill="none"
+          viewBox="0 0 24 24"
+          stroke-width="1.5"
+          stroke="currentColor"
+          class="w-6 h-6"
+        >
+          <path
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            d="M3.75 3v11.25A2.25 2.25 0 0 0 6 16.5h2.25M3.75 3h-1.5m1.5 0h16.5m0 0h1.5m-1.5 0v11.25A2.25 2.25 0 0 1 18 16.5h-2.25m-7.5 0h7.5m-7.5 0-1 3m8.5-3 1 3m0 0 .5 1.5m-.5-1.5h-9.5m0 0-.5 1.5m.75-9 3-3 2.143 2.143L15.429 8.25"
+          />
         </svg>
       </div>
-      <h3 class="text-base font-semibold text-slate-200">No scored portfolio records found</h3>
+      <h3 class="text-base font-semibold text-slate-200">
+        No scored portfolio records found
+      </h3>
       <p class="mt-1 text-xs text-slate-400 max-w-md mx-auto">
-        No credit and degradation scores have been computed yet. Upload telemetry, swap logs, or repayment schedules to begin portfolio appraisal.
+        No credit and degradation scores have been computed yet. Upload
+        telemetry, swap logs, or repayment schedules to begin portfolio
+        appraisal.
       </p>
       <div class="mt-5 flex items-center justify-center gap-3">
         <NuxtLink
@@ -267,7 +313,11 @@ function riskClass(v: number): string {
             </td>
             <td class="px-5 py-4 font-mono text-xs">
               <span
-                v-if="s.bhi_context === 'fleet' || s.financing_model === 'swap_network' || !s.battery_id"
+                v-if="
+                  s.bhi_context === 'fleet' ||
+                  s.financing_model === 'swap_network' ||
+                  !s.battery_id
+                "
                 class="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium bg-emerald-950/50 text-emerald-400 border border-emerald-800/40 font-sans"
                 title="Shared fleet battery pool (swap-network)"
               >
@@ -303,14 +353,21 @@ function riskClass(v: number): string {
     </div>
 
     <!-- Operator view: swap-network fleet stress (ONLY renders for swap_network financing model) -->
-    <div v-if="hasSwapNetwork" class="glass-card mt-6 p-5 border border-slate-800">
+    <div
+      v-if="hasSwapNetwork"
+      class="glass-card mt-6 p-5 border border-slate-800"
+    >
       <div class="mb-4 flex items-center justify-between gap-4">
         <div>
           <div class="flex items-center gap-2">
-            <h2 class="text-sm font-semibold text-slate-200 uppercase tracking-wider">
+            <h2
+              class="text-sm font-semibold text-slate-200 uppercase tracking-wider"
+            >
               Swap-Network Fleet Stress
             </h2>
-            <span class="rounded bg-emerald-950/60 px-2 py-0.5 text-[10px] font-medium text-emerald-400 border border-emerald-800/40">
+            <span
+              class="rounded bg-emerald-950/60 px-2 py-0.5 text-[10px] font-medium text-emerald-400 border border-emerald-800/40"
+            >
               Swap Network
             </span>
           </div>
@@ -336,7 +393,9 @@ function riskClass(v: number): string {
           :key="i"
           class="flex flex-wrap items-center gap-2 py-3"
         >
-          <span class="font-mono text-indigo-400">{{ short(f.entity_id) }}</span>
+          <span class="font-mono text-indigo-400">{{
+            short(f.entity_id)
+          }}</span>
           <span
             class="rounded border px-2 py-0.5 text-[11px] font-semibold font-mono"
             :class="

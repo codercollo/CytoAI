@@ -15,6 +15,9 @@ docker compose -f "$COMPOSE_FILE" --env-file .env pull api web
 echo "==> Restarting stack"
 docker compose -f "$COMPOSE_FILE" --env-file .env up -d
 
+echo "==> Reloading Caddy config (bind-mounted file changes aren't picked up automatically)"
+docker compose -f "$COMPOSE_FILE" --env-file .env restart caddy
+
 echo "==> Waiting for API to be ready"
 for i in $(seq 1 30); do
   if docker compose -f "$COMPOSE_FILE" exec -T api curl -fsS http://localhost:8080/readyz >/dev/null 2>&1; then

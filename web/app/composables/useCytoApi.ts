@@ -145,10 +145,11 @@ export interface BatteryCreateRequest {
 export interface LoanCreateRequest {
   external_ref?: string
   principal_kes: number
-  battery_value_kes: number
+  battery_value_kes?: number
   term_months?: number
   daily_installment_kes?: number
   started_at?: string
+  financing_model?: 'leased_fixed' | 'swap_network'
 }
 
 export interface RiderCreateRequest {
@@ -279,6 +280,20 @@ export function useCytoApi() {
 
     createRider: (body: RiderCreateRequest) =>
       $fetch<RiderResponse>(`${base}/v1/riders`, {
+        method: 'POST',
+        body: JSON.stringify(body),
+        headers: headers({ 'Content-Type': 'application/json' }),
+      }),
+
+    linkRider: (riderId: string, body: { battery: BatteryCreateRequest; loan: LoanCreateRequest }) =>
+      $fetch<RiderResponse>(`${base}/v1/riders/${riderId}/link`, {
+        method: 'PATCH',
+        body: JSON.stringify(body),
+        headers: headers({ 'Content-Type': 'application/json' }),
+      }),
+
+    createBattery: (body: BatteryCreateRequest) =>
+      $fetch<BatteryInfo>(`${base}/v1/batteries`, {
         method: 'POST',
         body: JSON.stringify(body),
         headers: headers({ 'Content-Type': 'application/json' }),

@@ -230,8 +230,16 @@ func (s *Server) resolveSwapRefs(ctx context.Context, partnerID string, rows []d
 		if !ok {
 			resolved, err := s.cfg.Store.ResolveBatteryIDByExternalRef(ctx, out[i].BatteryID)
 			if err != nil {
-				errs = append(errs, refError{Field: "battery_id", Value: out[i].BatteryID, Error: "unknown external ref"})
-				continue
+				// Auto-create pool battery on first sight during swap ingest
+				bRef := out[i].BatteryID
+				b, createErr := s.cfg.Store.CreateBattery(ctx, domain.BatteryRegistration{
+					ExternalRef: &bRef,
+				})
+				if createErr != nil {
+					errs = append(errs, refError{Field: "battery_id", Value: out[i].BatteryID, Error: "unknown external ref"})
+					continue
+				}
+				resolved = b.ID
 			}
 			batteryCache[out[i].BatteryID] = resolved
 			bid = resolved

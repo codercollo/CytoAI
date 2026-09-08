@@ -33,8 +33,8 @@ const stroke = computed(() => color(clamped.value))
 </script>
 
 <template>
-  <div class="flex flex-col items-center">
-    <svg :width="size" :height="size" viewBox="0 0 200 200">
+  <div class="flex flex-col items-center w-full">
+    <svg viewBox="0 0 200 200" class="w-full max-w-[220px] h-auto">
       <path :d="arcPath(180, 0)" fill="none" stroke="rgba(255,255,255,0.08)" stroke-width="14" stroke-linecap="round" />
       <path :d="valueArc" fill="none" :stroke="stroke" stroke-width="14" stroke-linecap="round" />
       <text x="100" y="106" text-anchor="middle" class="fill-slate-100 font-sans" font-size="42" font-weight="800">

@@ -41,6 +41,8 @@ type Store interface {
 	ListRiders(ctx context.Context, partnerID string, limit, offset int) ([]domain.RiderSummary, error)
 	RiderByID(ctx context.Context, partnerID, riderID string) (domain.RiderSummary, error)
 	CreateRider(ctx context.Context, partnerID string, reg domain.RiderRegistration) (domain.RiderSummary, error)
+	LinkRider(ctx context.Context, partnerID, riderID string, battery domain.BatteryRegistration, loan domain.LoanRegistration) (domain.RiderSummary, error)
+	CreateBattery(ctx context.Context, battery domain.BatteryRegistration) (domain.Battery, error)
 }
 
 // Authenticator is the subset of *auth.Authenticator middleware needs.

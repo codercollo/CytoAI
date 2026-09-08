@@ -50,14 +50,14 @@ onBeforeUnmount(() => {
       <div>
         <!-- Logo / Branding -->
         <div
-          class="px-6 py-5 border-b border-slate-800/60 flex items-center justify-between"
+          class="px-4 sm:px-6 py-4 sm:py-5 border-b border-slate-800/60 flex items-center justify-between"
         >
           <NuxtLink
             to="/"
             class="flex items-center gap-3 font-sans font-semibold tracking-tight text-slate-100"
           >
             <span
-              class="inline-flex h-7 w-7 items-center justify-center rounded-lg bg-indigo-600 shadow-[0_2px_8px_rgba(99,102,241,0.3)]"
+              class="inline-flex h-7 w-7 items-center justify-center rounded-lg bg-indigo-600 shadow-[0_2px_8px_rgba(99,102,241,0.3)] shrink-0"
             >
               <svg
                 xmlns="http://www.w3.org/2000/svg"
@@ -81,11 +81,11 @@ onBeforeUnmount(() => {
         </div>
 
         <!-- Navigation Links -->
-        <nav class="px-3 py-4 space-y-1">
+        <nav class="px-3 py-3 sm:py-4 flex flex-row md:flex-col overflow-x-auto md:overflow-x-visible gap-1 border-b md:border-b-0 border-slate-800/40">
           <NuxtLink
             to="/"
             exact-active-class="bg-indigo-600/10 text-indigo-400 border-indigo-500/50!"
-            class="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm text-slate-400 hover:bg-slate-800/50 hover:text-slate-200 transition-colors border border-transparent font-medium"
+            class="flex items-center gap-2 sm:gap-3 px-3 py-2 sm:py-2.5 rounded-lg text-xs sm:text-sm text-slate-400 hover:bg-slate-800/50 hover:text-slate-200 transition-colors border border-transparent font-medium shrink-0 whitespace-nowrap"
           >
             <svg
               xmlns="http://www.w3.org/2000/svg"
@@ -93,7 +93,7 @@ onBeforeUnmount(() => {
               viewBox="0 0 24 24"
               stroke-width="1.5"
               stroke="currentColor"
-              class="w-5 h-5"
+              class="w-4 h-4 sm:w-5 sm:h-5 shrink-0"
             >
               <path
                 stroke-linecap="round"
@@ -107,7 +107,7 @@ onBeforeUnmount(() => {
           <NuxtLink
             to="/riders"
             exact-active-class="bg-indigo-600/10 text-indigo-400 border-indigo-500/50!"
-            class="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm text-slate-400 hover:bg-slate-800/50 hover:text-slate-200 transition-colors border border-transparent font-medium"
+            class="flex items-center gap-2 sm:gap-3 px-3 py-2 sm:py-2.5 rounded-lg text-xs sm:text-sm text-slate-400 hover:bg-slate-800/50 hover:text-slate-200 transition-colors border border-transparent font-medium shrink-0 whitespace-nowrap"
           >
             <svg
               xmlns="http://www.w3.org/2000/svg"
@@ -115,7 +115,7 @@ onBeforeUnmount(() => {
               viewBox="0 0 24 24"
               stroke-width="1.5"
               stroke="currentColor"
-              class="w-5 h-5"
+              class="w-4 h-4 sm:w-5 sm:h-5 shrink-0"
             >
               <path
                 stroke-linecap="round"
@@ -129,7 +129,7 @@ onBeforeUnmount(() => {
           <NuxtLink
             to="/upload"
             exact-active-class="bg-indigo-600/10 text-indigo-400 border-indigo-500/50!"
-            class="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm text-slate-400 hover:bg-slate-800/50 hover:text-slate-200 transition-colors border border-transparent font-medium"
+            class="flex items-center gap-2 sm:gap-3 px-3 py-2 sm:py-2.5 rounded-lg text-xs sm:text-sm text-slate-400 hover:bg-slate-800/50 hover:text-slate-200 transition-colors border border-transparent font-medium shrink-0 whitespace-nowrap"
           >
             <svg
               xmlns="http://www.w3.org/2000/svg"
@@ -137,7 +137,7 @@ onBeforeUnmount(() => {
               viewBox="0 0 24 24"
               stroke-width="1.5"
               stroke="currentColor"
-              class="w-5 h-5"
+              class="w-4 h-4 sm:w-5 sm:h-5 shrink-0"
             >
               <path
                 stroke-linecap="round"
@@ -151,9 +151,9 @@ onBeforeUnmount(() => {
       </div>
 
       <!-- Settings / API Configuration -->
-      <div class="p-4 border-t border-slate-800 bg-slate-950/20">
+      <div class="p-3 sm:p-4 border-t border-slate-800 bg-slate-950/20">
         <label
-          class="block text-[10px] font-semibold uppercase tracking-wider text-slate-500 mb-2"
+          class="block text-[10px] font-semibold uppercase tracking-wider text-slate-500 mb-1.5 sm:mb-2"
         >
           PARTNER API KEY
         </label>
@@ -171,7 +171,7 @@ onBeforeUnmount(() => {
 
     <!-- Main Content Area -->
     <div class="flex-1 flex flex-col min-w-0">
-      <main class="flex-1 px-6 py-8 md:px-8 max-w-6xl w-full mx-auto">
+      <main class="flex-1 px-4 sm:px-6 md:px-8 py-5 sm:py-8 max-w-6xl w-full mx-auto">
         <NuxtPage />
       </main>
     </div>

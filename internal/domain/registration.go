@@ -34,6 +34,7 @@ type LoanRegistration struct {
 	TermMonths          *int
 	DailyInstallmentKes *float64
 	StartedAt           *time.Time
+	FinancingModel      *string
 }
 
 // RiderSummary is the API-facing view of a rider plus its primary (most

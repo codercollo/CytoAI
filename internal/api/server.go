@@ -35,6 +35,8 @@ func (s *Server) Routes() http.Handler {
 		r.Get("/riders", s.handleRiderList)
 		r.Post("/riders", s.handleRiderCreate)
 		r.Get("/riders/{rider_id}", s.handleRiderGet)
+		r.Patch("/riders/{rider_id}/link", s.handleRiderLink)
+		r.Post("/batteries", s.handleBatteryCreate)
 	})
 
 	return r

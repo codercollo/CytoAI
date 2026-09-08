@@ -61,7 +61,7 @@ function line(key: 'bhi' | 'rri'): string {
       <circle v-for="(p, i) in points" :key="'r' + i" :cx="x(i)" :cy="y(p.rri)" r="4" fill="#10b981" />
     </svg>
 
-    <div class="mt-3 flex items-center gap-5 font-sans text-xs font-medium text-slate-400">
+    <div class="mt-3 flex flex-wrap items-center gap-x-5 gap-y-2 font-sans text-xs font-medium text-slate-400">
       <span class="flex items-center gap-2"><span class="inline-block h-2 w-2 rounded-full bg-indigo-500"></span> {{ bhiLabel }}</span>
       <span class="flex items-center gap-2"><span class="inline-block h-2 w-2 rounded-full bg-emerald-500"></span> Repayment Risk Index (RRI)</span>
     </div>
