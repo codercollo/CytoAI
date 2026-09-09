@@ -1,176 +1,186 @@
-# Cyto AI
+# CytoAI
 
-### Neutral risk scoring for IoT-connected, pay-as-you-go asset financing — starting with electric motorcycle batteries
+**Explainable risk scoring for IoT-connected, pay-as-you-go asset financing.**
 
-CytoAI is a neutral risk-scoring layer for IoT-connected, pay-as-you-go (PAYG)
-asset financing — starting with electric motorcycle batteries, the
-fastest-growing and most underserved slice of a mechanism already proven at
-$1.6B+ scale by M-KOPA, SunCulture, and Hello Tractor.
+CytoAI combines **asset telematics** and **repayment behavior** into a single, explainable risk signal for lenders and PAYG asset operators.
 
-Today it turns two currently disconnected data streams — **battery telematics**
-(how hard a battery is being used and how fast it's degrading) and
-**repayment history** (how reliably a rider pays) — into a single, explainable
-risk score a lender can check **before** disbursing a loan or lease, not after
-it defaults.
+The MVP focuses on **electric motorcycle batteries in Kenya**, where battery health, usage patterns, swap activity, and repayment behavior can provide complementary signals for financing decisions.
 
-> Batteries account for 30–40% of an electric motorcycle's total cost, and
-> most Kenyan operators (Spiro, Roam, Ampersand, Arc Ride) lease batteries
-> separately from the bike to keep upfront prices low. Lenders like Watu,
-> Mogo, M-KOPA and 4G Capital are already underwriting thousands of these
-> loans — with no shared, data-driven way to price battery degradation risk
-> or rider default risk. A 2024 sector financing study by MicroSave
-> Consulting explicitly recommended exactly this: digital tools for credit
-> appraisal built on telematics data to reduce lender risk.
+## What It Does
 
----
+CytoAI turns two data streams into actionable risk signals:
 
-## What it does
+* **Battery Health Index (BHI)** — estimates battery health and remaining life.
+* **Repayment Risk Index (RRI)** — estimates repayment risk from payment behavior and usage regularity.
+* **CytoScore** — deterministic 0–100 score combining BHI and RRI.
+* **Anomaly Flags** — surfaces unusual usage or repayment patterns for human review.
 
-CytoAI supports the two financing models actually operating in Kenya, in one
-codebase and one score response:
+The system supports both major battery-financing models:
 
-- **Swap networks (primary)** — Spiro's model: ~60% of new e-moto sales, 450+
-  stations, 6M+ swaps. The battery is a shared fleet asset, not a rider's
-  collateral.
-- **Leased/fixed (secondary, fully supported)** — one battery per rider, where
-  the battery is the collateral.
+| Model                    | Battery Context    | Primary Use             |
+| ------------------------ | ------------------ | ----------------------- |
+| **Swap network**         | Fleet/pool health  | Operations & fleet risk |
+| **Fixed/leased battery** | Individual battery | Asset & credit risk     |
 
-It ingests battery telemetry, swap events, and repayment history and turns
-them into two model outputs combined into one explainable **CytoScore**:
+For swap networks, BHI is explicitly returned as `fleet` context so fleet health is never confused with an individual battery's condition.
 
-1. **Battery Health Index (BHI)** — for lease, the rider's own battery's
-   remaining life; for swap networks, the fleet/pool health (returned as
-   `bhi_context: fleet` so the two are never presented interchangeably).
-2. **Repayment Risk Index (RRI)** — probability of default from repayment
-   behaviour plus usage/swap-cadence regularity.
-3. **CytoScore** — the deterministic 0–100 combination of the two, queryable
-   via API or dashboard.
-4. **Anomaly flags** — non-gating fraud/anomaly findings (`anomaly_flags`)
-   surfaced for review, never an automatic rejection and never a block on
-   ingestion.
+## Who It's For
 
-**Two-sided value proposition:**
+### Lenders
 
-- **For swap-network operators** — an operational dashboard that tracks
-  battery health across a decentralized fleet, flags riders whose usage
-  patterns are degrading batteries faster than average, and identifies units
-  that need to be pulled from rotation.
-- **For lenders** — a credit-risk signal using battery-usage patterns and
-  swap-cadence regularity as real-time indicators, alongside repayment
-  history.
+Use telematics and repayment behavior as additional signals when evaluating financing risk.
 
-## Why this MVP is buildable fast
+### Asset Operators
 
-Real telematics + repayment data partnerships with operators take months to
-negotiate — too slow for an accelerator MVP deadline. So the MVP is designed
-around **small, public, freely downloadable datasets** that stand in for
-partner data, using the *exact same schema* real partner data will use. This
-means:
+Monitor battery health, identify abnormal usage patterns, and determine which assets may need maintenance or removal from circulation.
 
-- The pipeline, database schema, and model can be built and demoed **now**.
-- Swapping in a real partner's CSV export later requires **zero code
-  changes** — just a compliant file.
-- Training data stays in the **low tens of megabytes**, not gigabytes, so the
-  model trains in minutes on a laptop or a small Contabo VPS — no GPU, no
-  heavy MLOps.
+## Architecture
 
-### Beyond e-bikes (thesis, not built)
+```text
+                 ┌──────────────────┐
+                 │ Battery Telemetry │
+                 └────────┬─────────┘
+                          │
+                 ┌────────▼─────────┐
+                 │                  │
+                 │    CytoAI API    │
+                 │                  │
+                 └────────┬─────────┘
+                          │
+          ┌───────────────┼────────────────┐
+          │               │                │
+          ▼               ▼                ▼
+     Battery Health   Repayment Risk   Anomaly Detection
+          │               │                │
+          └───────────────┼────────────────┘
+                          ▼
+                     CytoScore
+                          │
+                 ┌────────┴────────┐
+                 ▼                 ▼
+              Lenders           Operators
+```
 
-The e-boda MVP is the first vertical, not the last. The same mechanism — a
-financed, IoT-tracked asset that is how the owner earns income, not just
-something they own — extends structurally to other PAYG asset classes. None
-of the following are built, validated, or supported today; they are ranked by
-structural fit, not by current evidence:
+The MVP uses public and synthetic proxy datasets with the **same schema intended for partner data**, allowing real telematics and repayment exports to be introduced without changing the core pipeline.
 
-1. **Electric boda bodas (e-motorcycles)** — the current MVP. Individual
-   owner-operator, battery is both collateral and the asset that gates daily
-   income, deposit + daily-repayment structure, swap-event telemetry already
-   present. Still an MVP: prototype metrics only, no signed pilot partner yet
-   (see spec.md §9).
-2. **Three-wheelers / tuk-tuks** — nearly the same shape (individual
-   owner-operator, deposit + daily repayment, vehicle/battery condition caps
-   daily earning). The main change is telemetry granularity.
-3. **E-cabs on platforms (Bolt/Uber e-motos)** — the e-boda vertical under a
-   different distribution channel. Same rider/battery/swap telemetry; the only
-   addition would be a "platform" tag on the loan record. No new modeling, but
-   not yet validated as a separate vertical.
-4. **Hired-out tractors (Hello Tractor model)** — an individual owner books
-   the tractor to farmers, usage is IoT-tracked, repayment ties to bookings.
-   Real adaptation needed: usage is seasonal, so "regular activity = healthy
-   borrower" needs a seasonal baseline instead of a daily one.
-5. **IoT-metered water-pump/borehole vending** — the least validated of the
-   five. Structurally similar (pump condition and volume sold drive income),
-   but not yet backed by a named, funded Kenyan operator the way the others
-   are.
+## Tech Stack
 
-What makes these five — not solar panels, phones, or TVs — the credible
-extension set: in each, the financed asset is how the person earns, so BHI
-(asset health) and RRI (repayment behavior) reinforce each other instead of
-RRI doing all the work alone.
+| Layer          | Technology                  |
+| -------------- | --------------------------- |
+| API / Backend  | Go, `net/http`, chi         |
+| ML Scoring     | Python, Flask, scikit-learn |
+| Database       | PostgreSQL                  |
+| Dashboard      | Nuxt 4, Vue 3               |
+| Routing        | Nuxt/Nitro `/v1/*` proxy    |
+| Infrastructure | Docker Compose              |
+| Hosting        | Contabo VPS                 |
+| CI/CD          | GitHub Actions              |
 
-See [`spec.md`](spec.md) for full data sourcing, schema, model, and API
-details.
+## Quick Start
 
-## Tech stack
+### Prerequisites
 
-| Layer                | Technology                                             |
-| --------------------- | ------------------------------------------------------ |
-| API / backend         | Go (net/http + chi router, following Alex Edwards' *Let's Go* project layout and TechSchool's *simplebank* conventions) |
-| ML scoring sidecar    | Python / Flask, scikit-learn (gradient boosting, <5MB model artifact) |
-| Database              | PostgreSQL                                              |
-| Web dashboard         | Nuxt 4 / Vue 3                                          |
-| Browser↔API routing   | Nuxt/Nitro same-origin `/v1/*` proxy                    |
-| Hosting               | Contabo VPS                                             |
-| CI/CD                 | GitHub Actions (`.github/workflows/test.yml`, `deploy.yml`) |
-| Containers            | Docker Compose (`postgres`, `api`, `web`)              |
+* Go
+* Docker & Docker Compose
+* Python
+* PostgreSQL
+* Make
 
-## Quick start (local dev)
+Clone and configure:
 
 ```bash
-# 1. Clone and configure
 git clone https://github.com/<org>/cytoai.git
 cd cytoai
+
 cp configs/config.example.yaml configs/config.local.yaml
+```
 
-# 2. Build + start the stack (postgres, api, web)
+Start the stack:
+
+```bash
 make up
+```
 
-# 3. Pull the public bootstrap datasets (small, MBs not GBs)
+Fetch the public datasets:
+
+```bash
 ./scripts/fetch_public_data.sh
+```
 
-# 4. Migrate, generate synthetic data, train, and seed a demo partner
+Initialize the development environment:
+
+```bash
 make migrate generate-data train seed-partner
+```
 
-# 5. Open the dashboard (served at http://localhost:3000), or run it locally
-#    against the containerized api backend:
+The services are available at:
+
+```text
+API:       http://localhost:8080
+Dashboard: http://localhost:3000
+```
+
+For frontend development:
+
+```bash
 make dev-web
 ```
 
-The API will be available at `http://localhost:8080` and the dashboard at
-`http://localhost:3000`.
+## Repository
 
-## Repository layout
+```text
+cytoai/
+├── api/                  # Go API
+├── ml/                   # Python scoring service
+├── web/                  # Nuxt dashboard
+├── db/                   # PostgreSQL schema & migrations
+├── configs/              # Application configuration
+├── scripts/              # Data and development scripts
+├── .github/workflows/    # CI/CD
+├── spec.md               # Technical specification
+├── mvp.md                # MVP scope
+└── project-structure.txt # Annotated repository tree
+```
 
-See [`project-structure.txt`](project-structure.txt) for the full annotated
-tree.
+## Data & Model
 
-## Documents
+The MVP is intentionally lightweight:
 
-- [`spec.md`](spec.md) — full technical specification: data sourcing, schema,
-  model design, API contract, deployment, and responsible-AI notes.
-- [`mvp.md`](mvp.md) — plain-language MVP scope and dashboard examples.
+* Public proxy datasets for initial development
+* Synthetic data for controlled scenarios
+* Training datasets measured in MBs rather than GBs
+* CPU-friendly model training
+* Small model artifacts suitable for low-cost infrastructure
+
+Real partner data can replace the proxy datasets while preserving the same ingestion and scoring interfaces.
 
 ## Status
 
-**MVP / hackathon prototype**, built for the Kenya Artificial Intelligence
-Accelerator Programme (GreenTech & Environmental AI pathway). Trained
-initially on public proxy datasets; designed for a direct swap to real
-partner telematics and repayment data with no architecture changes.
+**MVP / Hackathon Prototype**
 
-> **Prototype metrics caveat:** all model performance figures (including
-> ROC-AUC) are measured on synthetic/public proxy data, not live Kenyan
-> partner data, and are not production claims.
+CytoAI is currently a prototype developed for the **Kenya Artificial Intelligence Accelerator Programme — GreenTech & Environmental AI pathway**.
+
+Model performance metrics are based on **synthetic and public proxy data** and should not be interpreted as production performance or validated Kenyan partner results.
+
+## Roadmap
+
+The current MVP focuses on electric motorcycle batteries.
+
+The underlying architecture is designed to potentially extend to other IoT-connected PAYG assets such as:
+
+* Electric tuk-tuks
+* E-cabs
+* Hired-out tractors
+* IoT-metered water infrastructure
+
+These extensions are **future opportunities, not currently supported or validated products**.
+
+## Documentation
+
+* [`spec.md`](spec.md) — Technical specification, data sources, schema, models, API, deployment, and responsible-AI considerations.
+* [`mvp.md`](mvp.md) — MVP scope and product examples.
+* [`project-structure.txt`](project-structure.txt) — Full annotated repository structure.
 
 ## License
 
-TBD — proprietary during accelerator phase.
+**TBD** — proprietary during the accelerator phase.
