@@ -20,33 +20,37 @@ type scoreRequest struct {
 }
 
 type scoreResponse struct {
-	RiderID               string             `json:"rider_id"`
-	BatteryID             string             `json:"battery_id"`
-	FinancingModel        string             `json:"financing_model,omitempty"`
-	BHIContext            string             `json:"bhi_context,omitempty"`
-	BatteryHealthIndex    float64            `json:"battery_health_index"`
-	RepaymentRiskIndex    float64            `json:"repayment_risk_index"`
-	CytoScore             float64            `json:"cyto_score"`
-	BatteryModelVersion   string             `json:"battery_model_version"`
-	RepaymentModelVersion string             `json:"repayment_model_version"`
-	ScoredAt              string             `json:"scored_at,omitempty"`
-	AnomalyFlags          []risk.AnomalyFlag `json:"anomaly_flags"`
+	RiderID                    string             `json:"rider_id"`
+	BatteryID                  string             `json:"battery_id"`
+	FinancingModel             string             `json:"financing_model,omitempty"`
+	BHIContext                 string             `json:"bhi_context,omitempty"`
+	BatteryHealthIndex         float64            `json:"battery_health_index"`
+	RepaymentRiskIndex         float64            `json:"repayment_risk_index"`
+	CytoScore                  float64            `json:"cyto_score"`
+	BatteryModelVersion        string             `json:"battery_model_version"`
+	RepaymentModelVersion      string             `json:"repayment_model_version"`
+	ScoredAt                   string             `json:"scored_at,omitempty"`
+	AnomalyFlags               []risk.AnomalyFlag `json:"anomaly_flags"`
+	EstimatedSwapFeeBurdenKes  float64            `json:"estimated_swap_fee_burden_kes,omitempty"`
+	SwapFeeBurdenRRIAdjustment float64            `json:"swap_fee_burden_rri_adjustment,omitempty"`
 }
 
 // storedScoreResponse is the GET /v1/score/{rider_id} response shape. It keeps
 // the existing persisted-score fields and adds anomaly_flags.
 type storedScoreResponse struct {
-	ID                 int64              `json:"id"`
-	RiderID            *string            `json:"rider_id,omitempty"`
-	BatteryID          *string            `json:"battery_id,omitempty"`
-	FinancingModel     string             `json:"financing_model,omitempty"`
-	BHIContext         string             `json:"bhi_context,omitempty"`
-	BatteryHealthIndex float64            `json:"battery_health_index"`
-	RepaymentRiskIndex float64            `json:"repayment_risk_index"`
-	CytoScore          float64            `json:"cyto_score"`
-	ScoredAt           *time.Time         `json:"scored_at,omitempty"`
-	ModelVersion       *string            `json:"model_version,omitempty"`
-	AnomalyFlags       []risk.AnomalyFlag `json:"anomaly_flags"`
+	ID                         int64              `json:"id"`
+	RiderID                    *string            `json:"rider_id,omitempty"`
+	BatteryID                  *string            `json:"battery_id,omitempty"`
+	FinancingModel             string             `json:"financing_model,omitempty"`
+	BHIContext                 string             `json:"bhi_context,omitempty"`
+	BatteryHealthIndex         float64            `json:"battery_health_index"`
+	RepaymentRiskIndex         float64            `json:"repayment_risk_index"`
+	CytoScore                  float64            `json:"cyto_score"`
+	ScoredAt                   *time.Time         `json:"scored_at,omitempty"`
+	ModelVersion               *string            `json:"model_version,omitempty"`
+	AnomalyFlags               []risk.AnomalyFlag `json:"anomaly_flags"`
+	EstimatedSwapFeeBurdenKes  float64            `json:"estimated_swap_fee_burden_kes,omitempty"`
+	SwapFeeBurdenRRIAdjustment float64            `json:"swap_fee_burden_rri_adjustment,omitempty"`
 }
 
 type insufficientDataResponse struct {
@@ -163,7 +167,14 @@ func (s *Server) handleScoreCompute(w http.ResponseWriter, r *http.Request) {
 	}
 
 	ctx := r.Context()
-	owned, err := s.cfg.Store.RiderBelongsToPartner(ctx, partnerIDFrom(ctx), req.RiderID)
+	partnerID := partnerIDFrom(ctx)
+	riderUUID, err := s.cfg.Store.ResolveRiderID(ctx, partnerID, req.RiderID)
+	if err != nil {
+		writeError(w, http.StatusNotFound, "not_found", "no loan found for rider/battery", nil)
+		return
+	}
+
+	owned, err := s.cfg.Store.RiderBelongsToPartner(ctx, partnerID, riderUUID)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "internal_error", "failed to verify rider ownership", nil)
 		return
@@ -173,7 +184,7 @@ func (s *Server) handleScoreCompute(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	resp, err := s.scoreRider(ctx, partnerIDFrom(ctx), req.RiderID, req.BatteryID)
+	resp, err := s.scoreRider(ctx, partnerID, riderUUID, req.BatteryID)
 	if err != nil {
 		switch {
 		case errors.Is(err, errNoLoan):
@@ -244,6 +255,9 @@ func (s *Server) scoreRider(ctx context.Context, partnerID, riderID, batteryID s
 		repaymentFeatures.TelemetryCadenceProxy = domain.SwapCadenceProxyFrom(riderSwaps)
 		repaymentFeatures.BatteryStressProfile = domain.SwapBatteryStressProfileFrom(riderSwaps, fleetSwaps)
 		repaymentFeatures.FinancingModel = "swap_network"
+		totalBurden, qualCount := domain.SwapFeeBurdenFrom(riderSwaps)
+		repaymentFeatures.EstimatedSwapFeeBurdenKes = totalBurden
+		repaymentFeatures.SwapFeeBurdenQualifyingCount = qualCount
 	} else {
 		bhiContext = "rider_battery"
 		if batteryID == "" {
@@ -277,6 +291,26 @@ func (s *Server) scoreRider(ctx context.Context, partnerID, riderID, batteryID s
 		return nil, fmt.Errorf("scoring: %w", err)
 	}
 
+	if model == "swap_network" && repaymentFeatures.SwapFeeBurdenQualifyingCount > 0 {
+		dailyInst := 0.0
+		if loan.DailyInstallmentKes != nil {
+			dailyInst = *loan.DailyInstallmentKes
+		}
+		adj := domain.ComputeSwapFeeBurdenRRIAdjustment(
+			repaymentFeatures.EstimatedSwapFeeBurdenKes,
+			repaymentFeatures.SwapFeeBurdenQualifyingCount,
+			dailyInst,
+			domain.DefaultSwapFeeBurdenAdjustmentParams(),
+		)
+		if adj > 0 {
+			repaymentFeatures.SwapFeeBurdenRRIAdjustment = adj
+			adjustedRRI := risk.ClampScore(result.RepaymentRiskIndex - adj)
+			result.RepaymentRiskIndex = adjustedRRI
+			weights := risk.DefaultWeights()
+			result.CytoScore = risk.ClampScore(weights.RRI*(100-adjustedRRI) + weights.BHI*result.BatteryHealthIndex)
+		}
+	}
+
 	anomalyFlags := s.detectAnomalies(ctx, telemetry, events)
 	result.AnomalyFlags = anomalyFlags
 
@@ -292,17 +326,19 @@ func (s *Server) scoreRider(ctx context.Context, partnerID, riderID, batteryID s
 	}
 
 	return &scoreResponse{
-		RiderID:               riderID,
-		BatteryID:             batteryID,
-		FinancingModel:        model,
-		BHIContext:            bhiContext,
-		BatteryHealthIndex:    float64(result.BatteryHealthIndex),
-		RepaymentRiskIndex:    float64(result.RepaymentRiskIndex),
-		CytoScore:             float64(result.CytoScore),
-		BatteryModelVersion:   result.BatteryModelVersion,
-		RepaymentModelVersion: result.RepaymentModelVersion,
-		ScoredAt:              now.Format(time.RFC3339),
-		AnomalyFlags:          anomalyFlags,
+		RiderID:                    riderID,
+		BatteryID:                  batteryID,
+		FinancingModel:             model,
+		BHIContext:                 bhiContext,
+		BatteryHealthIndex:         float64(result.BatteryHealthIndex),
+		RepaymentRiskIndex:         float64(result.RepaymentRiskIndex),
+		CytoScore:                  float64(result.CytoScore),
+		BatteryModelVersion:        result.BatteryModelVersion,
+		RepaymentModelVersion:      result.RepaymentModelVersion,
+		ScoredAt:                   now.Format(time.RFC3339),
+		AnomalyFlags:               anomalyFlags,
+		EstimatedSwapFeeBurdenKes:  repaymentFeatures.EstimatedSwapFeeBurdenKes,
+		SwapFeeBurdenRRIAdjustment: repaymentFeatures.SwapFeeBurdenRRIAdjustment,
 	}, nil
 }
 
@@ -375,8 +411,14 @@ func (s *Server) handleRescoreAll(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleScoreGet(w http.ResponseWriter, r *http.Request) {
-	riderID := chi.URLParam(r, "rider_id")
-	owned, err := s.cfg.Store.RiderBelongsToPartner(r.Context(), partnerIDFrom(r.Context()), riderID)
+	riderRef := chi.URLParam(r, "rider_id")
+	partnerID := partnerIDFrom(r.Context())
+	riderUUID, err := s.cfg.Store.ResolveRiderID(r.Context(), partnerID, riderRef)
+	if err != nil {
+		writeError(w, http.StatusNotFound, "not_found", "no score found for rider", nil)
+		return
+	}
+	owned, err := s.cfg.Store.RiderBelongsToPartner(r.Context(), partnerID, riderUUID)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "internal_error", "failed to verify rider ownership", nil)
 		return
@@ -385,7 +427,7 @@ func (s *Server) handleScoreGet(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusNotFound, "not_found", "no score found for rider", nil)
 		return
 	}
-	score, err := s.cfg.Store.LatestScore(r.Context(), riderID)
+	score, err := s.cfg.Store.LatestScore(r.Context(), riderUUID)
 	if err != nil {
 		writeError(w, http.StatusNotFound, "not_found", "no score found for rider", nil)
 		return
@@ -393,7 +435,7 @@ func (s *Server) handleScoreGet(w http.ResponseWriter, r *http.Request) {
 
 	flags := []risk.AnomalyFlag{}
 	if score.BatteryID != nil {
-		flags = s.anomalyFlagsForRiderBattery(r.Context(), riderID, *score.BatteryID)
+		flags = s.anomalyFlagsForRiderBattery(r.Context(), riderUUID, *score.BatteryID)
 	}
 
 	writeJSON(w, http.StatusOK, storedScoreResponse{

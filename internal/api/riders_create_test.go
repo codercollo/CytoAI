@@ -104,3 +104,20 @@ func TestRiderCreate_DuplicateExternalRef(t *testing.T) {
 		t.Errorf("error = %q, want duplicate_external_ref", body.Error)
 	}
 }
+
+func TestBatteryCreate_InvalidCommissionedAt(t *testing.T) {
+	srv := newTestServer(&mockStore{}, mockScorer{}, mockAuth{})
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/batteries", strings.NewReader(`{"external_ref":"pool_1","commissioned_at":"2006-01-02T15:04:05Z07:00"}`))
+	req.Header.Set("Authorization", "Bearer good")
+	req.Header.Set("Content-Type", "application/json")
+	rr := httptest.NewRecorder()
+	srv.Routes().ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400; body=%s", rr.Code, rr.Body.String())
+	}
+	if !strings.Contains(rr.Body.String(), "battery.commissioned_at must be an RFC3339 timestamp") {
+		t.Errorf("expected error about commissioned_at RFC3339 timestamp, got %s", rr.Body.String())
+	}
+}

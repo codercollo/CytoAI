@@ -57,6 +57,12 @@ type RepaymentFeatures struct {
 	// (7-feature) RRI artifact so leased_fixed scores are unaffected by the
 	// swap-network stress feature.
 	FinancingModel string `json:"financing_model,omitempty"`
+	// EstimatedSwapFeeBurdenKes is the total KES paid across qualifying swap events.
+	EstimatedSwapFeeBurdenKes float64 `json:"estimated_swap_fee_burden_kes,omitempty"`
+	// SwapFeeBurdenRRIAdjustment is the rule-based post-model RRI reduction points applied.
+	SwapFeeBurdenRRIAdjustment float64 `json:"swap_fee_burden_rri_adjustment,omitempty"`
+	// SwapFeeBurdenQualifyingCount is the number of swap events with non-nil PaidAmountKes.
+	SwapFeeBurdenQualifyingCount int `json:"swap_fee_burden_qualifying_count,omitempty"`
 }
 
 // BatteryPrediction is the decoded response from POST /predict/battery.
@@ -112,10 +118,31 @@ func (c *MLClient) PredictBattery(ctx context.Context, f BatteryFeatures) (*Batt
 	return &out, nil
 }
 
+type repaymentSidecarPayload struct {
+	OnTimeRatio             float64 `json:"on_time_ratio"`
+	AvgDaysLate             float64 `json:"avg_days_late"`
+	PaymentCadenceProxy     float64 `json:"payment_cadence_proxy"`
+	LoanToBatteryValueRatio float64 `json:"loan_to_battery_value_ratio"`
+	TenureDays              float64 `json:"tenure_days"`
+	TelemetryCadenceProxy   float64 `json:"telemetry_cadence_proxy"`
+	BatteryStressProfile    float64 `json:"battery_stress_profile"`
+	FinancingModel          string  `json:"financing_model,omitempty"`
+}
+
 // PredictRepayment calls POST /predict/repayment.
 func (c *MLClient) PredictRepayment(ctx context.Context, f RepaymentFeatures) (*RepaymentPrediction, error) {
+	payload := repaymentSidecarPayload{
+		OnTimeRatio:             f.OnTimeRatio,
+		AvgDaysLate:             f.AvgDaysLate,
+		PaymentCadenceProxy:     f.PaymentCadenceProxy,
+		LoanToBatteryValueRatio: f.LoanToBatteryValueRatio,
+		TenureDays:              f.TenureDays,
+		TelemetryCadenceProxy:   f.TelemetryCadenceProxy,
+		BatteryStressProfile:    f.BatteryStressProfile,
+		FinancingModel:          f.FinancingModel,
+	}
 	var out RepaymentPrediction
-	if err := c.postJSON(ctx, "/predict/repayment", f, &out); err != nil {
+	if err := c.postJSON(ctx, "/predict/repayment", payload, &out); err != nil {
 		return nil, fmt.Errorf("predict repayment: %w", err)
 	}
 	return &out, nil

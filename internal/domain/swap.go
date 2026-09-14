@@ -16,8 +16,10 @@ type SwapEvent struct {
 	StationID                *string   `db:"station_id" json:"station_id,omitempty"`
 	SwappedAt                time.Time `db:"swapped_at" json:"swapped_at"`
 	ReturnedStateOfCharge    *float64  `db:"returned_state_of_charge" json:"returned_state_of_charge,omitempty"`
+	ReceivedStateOfCharge    *float64  `db:"received_state_of_charge" json:"received_state_of_charge,omitempty"`
 	ReturnedTemperatureC     *float64  `db:"returned_temperature_c" json:"returned_temperature_c,omitempty"`
 	ReturnedCycleCount       *int      `db:"returned_cycle_count" json:"returned_cycle_count,omitempty"`
 	ReturnedDepthOfDischarge *float64  `db:"returned_depth_of_discharge" json:"returned_depth_of_discharge,omitempty"`
 	DistanceKmSinceLastSwap  *float64  `db:"distance_km_since_last_swap" json:"distance_km_since_last_swap,omitempty"`
+	PaidAmountKes            *float64  `db:"paid_amount_kes" json:"paid_amount_kes,omitempty"`
 }

@@ -302,20 +302,67 @@ func (s *Server) handleRiderGet(w http.ResponseWriter, r *http.Request) {
 // there is no score or the feature inputs are no longer available, so the
 // detail page never fabricates factors for a rider that has none.
 func (s *Server) computeFactors(ctx context.Context, sm domain.RiderSummary) *factorsResponse {
-	if sm.Score == nil || sm.Score.BatteryID == nil {
+	if sm.Score == nil {
 		return nil
 	}
-	batteryID := *sm.Score.BatteryID
+	batteryID := ""
+	if sm.Score.BatteryID != nil {
+		batteryID = *sm.Score.BatteryID
+	}
 
-	loan, err := s.cfg.Store.LoanByRiderAndBattery(ctx, sm.Rider.ID, batteryID)
+	loan, err := s.loadLoan(ctx, sm.Rider.ID, batteryID)
 	if err != nil {
+		return nil
+	}
+
+	model := ""
+	if loan.FinancingModel != nil {
+		model = *loan.FinancingModel
+	}
+
+	events, err := s.cfg.Store.RepaymentEventsByLoan(ctx, loan.ID)
+	if err != nil {
+		return nil
+	}
+
+	if model == "swap_network" {
+		partnerID := partnerIDFrom(ctx)
+		fleetSwaps, err := s.cfg.Store.SwapEventsByPartner(ctx, partnerID)
+		if err != nil {
+			return nil
+		}
+		bf, err := domain.SwapBatteryBhiFeaturesFrom(fleetSwaps)
+		if err != nil {
+			return nil
+		}
+		riderSwaps, err := s.cfg.Store.SwapEventsByRider(ctx, sm.Rider.ID)
+		if err != nil {
+			return nil
+		}
+		rf, err := domain.RepaymentFeaturesFrom(loan, events)
+		if err != nil {
+			return nil
+		}
+		rf.TelemetryCadenceProxy = domain.SwapCadenceProxyFrom(riderSwaps)
+		rf.BatteryStressProfile = domain.SwapBatteryStressProfileFrom(riderSwaps, fleetSwaps)
+		rf.FinancingModel = "swap_network"
+		totalBurden, qualCount := domain.SwapFeeBurdenFrom(riderSwaps)
+		rf.EstimatedSwapFeeBurdenKes = totalBurden
+		rf.SwapFeeBurdenQualifyingCount = qualCount
+		dailyInst := 0.0
+		if loan.DailyInstallmentKes != nil {
+			dailyInst = *loan.DailyInstallmentKes
+		}
+		rf.SwapFeeBurdenRRIAdjustment = domain.ComputeSwapFeeBurdenRRIAdjustment(
+			totalBurden, qualCount, dailyInst, domain.DefaultSwapFeeBurdenAdjustmentParams(),
+		)
+		return &factorsResponse{Battery: bf, Repayment: rf}
+	}
+
+	if batteryID == "" {
 		return nil
 	}
 	telemetry, err := s.cfg.Store.TelemetryReadingsByBattery(ctx, batteryID)
-	if err != nil {
-		return nil
-	}
-	events, err := s.cfg.Store.RepaymentEventsByLoan(ctx, loan.ID)
 	if err != nil {
 		return nil
 	}
@@ -329,6 +376,7 @@ func (s *Server) computeFactors(ctx context.Context, sm domain.RiderSummary) *fa
 		return nil
 	}
 	rf.TelemetryCadenceProxy = domain.TelemetryCadenceProxyFrom(telemetry)
+	rf.FinancingModel = "leased_fixed"
 	return &factorsResponse{Battery: bf, Repayment: rf}
 }
 

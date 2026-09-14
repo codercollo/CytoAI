@@ -86,16 +86,18 @@ func (s *Store) InsertSwapEvents(ctx context.Context, events []domain.SwapEvent)
 			nullableString(e.StationID),
 			e.SwappedAt,
 			nullableFloat(e.ReturnedStateOfCharge),
+			nullableFloat(e.ReceivedStateOfCharge),
 			nullableFloat(e.ReturnedTemperatureC),
 			nullableInt(e.ReturnedCycleCount),
 			nullableFloat(e.ReturnedDepthOfDischarge),
 			nullableFloat(e.DistanceKmSinceLastSwap),
+			nullableFloat(e.PaidAmountKes),
 		}
 	}
 
 	n, err := s.pool.CopyFrom(ctx,
 		pgx.Identifier{"swap_events"},
-		[]string{"rider_id", "battery_id", "station_id", "swapped_at", "returned_state_of_charge", "returned_temperature_c", "returned_cycle_count", "returned_depth_of_discharge", "distance_km_since_last_swap"},
+		[]string{"rider_id", "battery_id", "station_id", "swapped_at", "returned_state_of_charge", "received_state_of_charge", "returned_temperature_c", "returned_cycle_count", "returned_depth_of_discharge", "distance_km_since_last_swap", "paid_amount_kes"},
 		pgx.CopyFromRows(rows),
 	)
 	if err != nil {

@@ -84,7 +84,7 @@ func (s *Store) ResolveBatteryIDByExternalRef(ctx context.Context, ref string) (
 func (s *Store) RiderBelongsToPartner(ctx context.Context, partnerID, riderID string) (bool, error) {
 	var ok bool
 	err := s.pool.QueryRow(ctx,
-		`SELECT EXISTS (SELECT 1 FROM riders WHERE id = $1 AND partner_id = $2)`, riderID, partnerID,
+		`SELECT EXISTS (SELECT 1 FROM riders WHERE (id::text = $1 OR external_ref = $1) AND partner_id = $2)`, riderID, partnerID,
 	).Scan(&ok)
 	if err != nil {
 		return false, fmt.Errorf("queries: rider belongs to partner: %w", err)

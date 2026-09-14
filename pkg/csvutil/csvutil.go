@@ -275,6 +275,10 @@ func ParseSwapEvents(r io.Reader) ([]domain.SwapEvent, []RowError) {
 			rowErrs = append(rowErrs, RowError{Row: row, Field: "returned_state_of_charge", Error: "must be a number"})
 			continue
 		}
+		if e.ReceivedStateOfCharge, err = parseFloatPtr(get(rec, idx, "received_state_of_charge")); err != nil {
+			rowErrs = append(rowErrs, RowError{Row: row, Field: "received_state_of_charge", Error: "must be a number"})
+			continue
+		}
 		if e.ReturnedTemperatureC, err = parseFloatPtr(get(rec, idx, "returned_temperature_c")); err != nil {
 			rowErrs = append(rowErrs, RowError{Row: row, Field: "returned_temperature_c", Error: "must be a number"})
 			continue
@@ -289,6 +293,10 @@ func ParseSwapEvents(r io.Reader) ([]domain.SwapEvent, []RowError) {
 		}
 		if e.DistanceKmSinceLastSwap, err = parseFloatPtr(get(rec, idx, "distance_km_since_last_swap")); err != nil {
 			rowErrs = append(rowErrs, RowError{Row: row, Field: "distance_km_since_last_swap", Error: "must be a number"})
+			continue
+		}
+		if e.PaidAmountKes, err = parseFloatPtr(get(rec, idx, "paid_amount_kes")); err != nil {
+			rowErrs = append(rowErrs, RowError{Row: row, Field: "paid_amount_kes", Error: "must be a number"})
 			continue
 		}
 

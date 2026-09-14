@@ -146,3 +146,91 @@ func TestRescoreAll_CoversSwapNetworkRiders(t *testing.T) {
 		t.Errorf("skipped = %d, want 0; body=%+v", len(body.Skipped), body)
 	}
 }
+
+func TestScoreCompute_SwapFeeBurdenRRIAdjustment(t *testing.T) {
+	makeStore := func(swaps []domain.SwapEvent) *mockStore {
+		return &mockStore{
+			latestLoanForRider: func(ctx context.Context, riderID string) (domain.Loan, error) {
+				l := swapLoan()
+				l.DailyInstallmentKes = fptr(100.0)
+				return l, nil
+			},
+			repaymentByLoan: func(ctx context.Context, loanID string) ([]domain.RepaymentEvent, error) {
+				return onTimeEvent(), nil
+			},
+			swapEventsByPartner: func(ctx context.Context, partnerID string) ([]domain.SwapEvent, error) {
+				return fleetSwaps(), nil
+			},
+			swapEventsByRider: func(ctx context.Context, riderID string) ([]domain.SwapEvent, error) {
+				return swaps, nil
+			},
+			insertScore: func(ctx context.Context, s domain.Score) (int64, error) { return 1, nil },
+		}
+	}
+
+	scorer := mockScorer{score: func(ctx context.Context, b risk.BatteryFeatures, r risk.RepaymentFeatures) (*risk.Result, error) {
+		return &risk.Result{BatteryHealthIndex: 80, RepaymentRiskIndex: 40, CytoScore: 70}, nil
+	}}
+
+	t.Run("high spend rider receives RRI reduction and adjustment breakdown", func(t *testing.T) {
+		highSpendSwaps := []domain.SwapEvent{
+			{PaidAmountKes: fptr(200.0)},
+			{PaidAmountKes: fptr(200.0)},
+		} // total = 400.0 KES, dailyInst = 100.0. Ratio = 4.0. Discount = (4 - 1)*5 = 15.0 pts
+		store := makeStore(highSpendSwaps)
+		srv := newTestServer(store, scorer, mockAuth{})
+
+		req := httptest.NewRequest(http.MethodPost, "/v1/score", strings.NewReader(`{"rider_id":"r-high-spend"}`))
+		req.Header.Set("Authorization", "Bearer good")
+		req.Header.Set("Content-Type", "application/json")
+		rr := httptest.NewRecorder()
+		srv.Routes().ServeHTTP(rr, req)
+
+		if rr.Code != http.StatusOK {
+			t.Fatalf("status = %d, want 200; body=%s", rr.Code, rr.Body.String())
+		}
+		var resp scoreResponse
+		if err := json.Unmarshal(rr.Body.Bytes(), &resp); err != nil {
+			t.Fatalf("decode: %v", err)
+		}
+
+		if resp.EstimatedSwapFeeBurdenKes != 400.0 {
+			t.Errorf("EstimatedSwapFeeBurdenKes = %v, want 400.0", resp.EstimatedSwapFeeBurdenKes)
+		}
+		if resp.SwapFeeBurdenRRIAdjustment <= 0 {
+			t.Errorf("SwapFeeBurdenRRIAdjustment = %v, want > 0", resp.SwapFeeBurdenRRIAdjustment)
+		}
+		if resp.RepaymentRiskIndex >= 40.0 {
+			t.Errorf("RepaymentRiskIndex = %v, want < 40.0 (unadjusted base)", resp.RepaymentRiskIndex)
+		}
+	})
+
+	t.Run("low spend rider gets no RRI adjustment", func(t *testing.T) {
+		lowSpendSwaps := []domain.SwapEvent{
+			{PaidAmountKes: fptr(50.0)},
+		} // total = 50.0 KES, dailyInst = 100.0. Ratio = 0.5 <= 1.0. Discount = 0
+		store := makeStore(lowSpendSwaps)
+		srv := newTestServer(store, scorer, mockAuth{})
+
+		req := httptest.NewRequest(http.MethodPost, "/v1/score", strings.NewReader(`{"rider_id":"r-low-spend"}`))
+		req.Header.Set("Authorization", "Bearer good")
+		req.Header.Set("Content-Type", "application/json")
+		rr := httptest.NewRecorder()
+		srv.Routes().ServeHTTP(rr, req)
+
+		if rr.Code != http.StatusOK {
+			t.Fatalf("status = %d, want 200; body=%s", rr.Code, rr.Body.String())
+		}
+		var resp scoreResponse
+		if err := json.Unmarshal(rr.Body.Bytes(), &resp); err != nil {
+			t.Fatalf("decode: %v", err)
+		}
+
+		if resp.SwapFeeBurdenRRIAdjustment != 0 {
+			t.Errorf("SwapFeeBurdenRRIAdjustment = %v, want 0", resp.SwapFeeBurdenRRIAdjustment)
+		}
+		if resp.RepaymentRiskIndex != 40.0 {
+			t.Errorf("RepaymentRiskIndex = %v, want 40.0", resp.RepaymentRiskIndex)
+		}
+	})
+}

@@ -153,3 +153,55 @@ func maxFloat(vals []float64) float64 {
 	}
 	return m
 }
+
+// SwapFeeBurdenFrom sums non-nil PaidAmountKes across a rider's swap events into
+// estimated_swap_fee_burden_kes. Events with nil PaidAmountKes are skipped rather
+// than treated as 0 so missing data does not silently understate fee burden.
+// Returns the total paid amount in KES and the count of qualifying swap events.
+func SwapFeeBurdenFrom(swaps []SwapEvent) (totalKes float64, qualifyingCount int) {
+	for _, s := range swaps {
+		if s.PaidAmountKes != nil {
+			totalKes += *s.PaidAmountKes
+			qualifyingCount++
+		}
+	}
+	return totalKes, qualifyingCount
+}
+
+// SwapFeeBurdenAdjustmentParams configures the rule-based post-model RRI
+// reduction based on real swap fee payments.
+type SwapFeeBurdenAdjustmentParams struct {
+	MinEvents      int     // Minimum qualifying swap events required (default 1)
+	RatioThreshold float64 // Fee burden to daily installment ratio threshold (default 1.0)
+	NudgeFactor    float64 // Points of RRI reduction per ratio unit above threshold (default 5.0)
+	MaxDiscountRRI float64 // Maximum capped RRI reduction in points (default 15.0)
+}
+
+// DefaultSwapFeeBurdenAdjustmentParams returns default parameters for fee burden RRI adjustment.
+func DefaultSwapFeeBurdenAdjustmentParams() SwapFeeBurdenAdjustmentParams {
+	return SwapFeeBurdenAdjustmentParams{
+		MinEvents:      1,
+		RatioThreshold: 1.0,
+		NudgeFactor:    5.0,
+		MaxDiscountRRI: 15.0,
+	}
+}
+
+// ComputeSwapFeeBurdenRRIAdjustment calculates a rule-based RRI reduction based on
+// total paid swap fee burden relative to the loan daily installment.
+// Returns 0.0 if qualifyingEvents < MinEvents or dailyInstallmentKes <= 0.
+func ComputeSwapFeeBurdenRRIAdjustment(feeBurdenKes float64, qualifyingEvents int, dailyInstallmentKes float64, params SwapFeeBurdenAdjustmentParams) float64 {
+	if qualifyingEvents < params.MinEvents || dailyInstallmentKes <= 0 {
+		return 0.0
+	}
+	ratio := feeBurdenKes / dailyInstallmentKes
+	if ratio <= params.RatioThreshold {
+		return 0.0
+	}
+	discount := (ratio - params.RatioThreshold) * params.NudgeFactor
+	if discount > params.MaxDiscountRRI {
+		discount = params.MaxDiscountRRI
+	}
+	return math.Round(discount*1e4) / 1e4
+}
+
