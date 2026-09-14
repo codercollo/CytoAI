@@ -1,42 +1,4 @@
 <script setup lang="ts">
-const toast = useToast();
-const { apiKey, setApiKey } = useApiKey();
-const hydrated = ref(false);
-const lastWasEmpty = ref(true);
-let keyDebounce: ReturnType<typeof setTimeout> | undefined;
-
-onMounted(() => {
-  lastWasEmpty.value = apiKey.value === "";
-  hydrated.value = true;
-});
-
-watch(apiKey, (v) => {
-  if (import.meta.client) {
-    if (v) {
-      localStorage.setItem("cyto_api_key", v);
-    } else {
-      localStorage.removeItem("cyto_api_key");
-    }
-  }
-
-  // Only toast on real user edits, not the initial hydration set above.
-  if (!hydrated.value) return;
-
-  if (keyDebounce) clearTimeout(keyDebounce);
-  keyDebounce = setTimeout(() => {
-    const empty = v === "";
-    if (empty && !lastWasEmpty.value) {
-      toast.warning("Partner API key cleared — requests will be unauthenticated");
-    } else if (!empty && lastWasEmpty.value) {
-      toast.success("API key set");
-    }
-    lastWasEmpty.value = empty;
-  }, 500);
-});
-
-onBeforeUnmount(() => {
-  if (keyDebounce) clearTimeout(keyDebounce);
-});
 </script>
 
 <template>
@@ -148,24 +110,6 @@ onBeforeUnmount(() => {
             Data Ingestion
           </NuxtLink>
         </nav>
-      </div>
-
-      <!-- Settings / API Configuration -->
-      <div class="p-3 sm:p-4 border-t border-slate-800 bg-slate-950/20">
-        <label
-          class="block text-[10px] font-semibold uppercase tracking-wider text-slate-500 mb-1.5 sm:mb-2"
-        >
-          PARTNER API KEY
-        </label>
-        <div class="relative">
-          <input
-            v-model="apiKey"
-            type="password"
-            placeholder="Enter partner API key...."
-            autocomplete="off"
-            class="w-full rounded-lg border border-slate-800 bg-slate-900/60 px-3 py-2 text-xs text-slate-200 placeholder:text-slate-600 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500/40"
-          />
-        </div>
       </div>
     </aside>
 

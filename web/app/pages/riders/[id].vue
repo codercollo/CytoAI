@@ -128,6 +128,21 @@ function isValidDate(v: string): boolean {
   return /^\d{4}-\d{2}-\d{2}$/.test(v) && !Number.isNaN(Date.parse(v));
 }
 
+function isValidCommissionedAt(val?: string): boolean {
+  if (!val) return true;
+  const s = val.trim();
+  if (!s) return true;
+  if (
+    s === "2006-01-02T15:04:05Z07:00" ||
+    s.includes("Z07:00") ||
+    s === "2006-01-02T15:04:05Z" ||
+    s.startsWith("2006-01-02")
+  ) {
+    return false;
+  }
+  return !Number.isNaN(Date.parse(s));
+}
+
 function validateLink(): string {
   if (!str(linkForm.principal_kes)) return "Loan principal (KES) is required.";
   if (!str(linkForm.battery_value_kes))
@@ -157,7 +172,7 @@ function validateLink(): string {
     return "Loan start date is invalid.";
   if (
     str(linkForm.commissioned_at) &&
-    Number.isNaN(Date.parse(linkForm.commissioned_at.trim()))
+    !isValidCommissionedAt(linkForm.commissioned_at)
   )
     return "Battery commissioned date/time is invalid.";
   return "";
@@ -586,6 +601,23 @@ const tempOk = computed(() => {
                     }}
                     (relative to fleet)</span
                   >
+                </li>
+                <!-- Swap-network specific factor: estimated swap fee burden & RRI adjustment -->
+                <li
+                  v-if="
+                    isSwapNetwork &&
+                    factors.repayment.estimated_swap_fee_burden_kes != null
+                  "
+                  class="flex items-center gap-2"
+                >
+                  <span class="font-bold text-emerald-400">•</span>
+                  <span
+                    >Estimated swap fee burden: KES
+                    {{ (factors.repayment.estimated_swap_fee_burden_kes ?? 0).toFixed(0) }}
+                    <template v-if="(factors.repayment.swap_fee_burden_rri_adjustment ?? 0) > 0">
+                      (Rule-based RRI discount: -{{ (factors.repayment.swap_fee_burden_rri_adjustment ?? 0).toFixed(1) }} pts)
+                    </template>
+                  </span>
                 </li>
               </ul>
             </div>

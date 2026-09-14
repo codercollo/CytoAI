@@ -174,6 +174,21 @@ function isValidDate(v: string): boolean {
   return /^\d{4}-\d{2}-\d{2}$/.test(v) && !Number.isNaN(Date.parse(v));
 }
 
+function isValidCommissionedAt(val?: string): boolean {
+  if (!val) return true;
+  const s = val.trim();
+  if (!s) return true;
+  if (
+    s === "2006-01-02T15:04:05Z07:00" ||
+    s.includes("Z07:00") ||
+    s === "2006-01-02T15:04:05Z" ||
+    s.startsWith("2006-01-02")
+  ) {
+    return false;
+  }
+  return !Number.isNaN(Date.parse(s));
+}
+
 // ─── Register form validation ───────────────────────────────────────────────
 function validate(): string {
   if (!form.external_ref.trim()) return "Rider reference is required.";
@@ -198,7 +213,7 @@ function validate(): string {
     }
     if (
       str(form.commissioned_at) &&
-      Number.isNaN(Date.parse(form.commissioned_at.trim()))
+      !isValidCommissionedAt(form.commissioned_at)
     ) {
       return "Battery commissioned date/time is invalid.";
     }
@@ -251,7 +266,7 @@ function validateLink(): string {
     return "Loan start date is invalid.";
   if (
     str(linkForm.commissioned_at) &&
-    Number.isNaN(Date.parse(linkForm.commissioned_at.trim()))
+    !isValidCommissionedAt(linkForm.commissioned_at)
   ) {
     return "Battery commissioned date/time is invalid.";
   }
@@ -368,6 +383,13 @@ async function submitPoolBattery() {
     Number(poolBatteryForm.rated_capacity_wh) <= 0
   ) {
     poolBatteryFormError.value = "Rated capacity must be positive.";
+    return;
+  }
+  if (
+    str(poolBatteryForm.commissioned_at) &&
+    !isValidCommissionedAt(poolBatteryForm.commissioned_at)
+  ) {
+    poolBatteryFormError.value = "Battery commissioned date/time is invalid.";
     return;
   }
 
@@ -1398,8 +1420,11 @@ function modeButtonClass(mode: "linked" | "swap_network" | "identity"): string {
                 id="pool_commissioned"
                 v-model="poolBatteryForm.commissioned_at"
                 :class="inputClass"
-                placeholder="2026-01-01T00:00:00Z"
+                placeholder="2026-01-15T10:00:00Z"
               />
+              <p class="mt-1 text-[11px] text-slate-500">
+                Optional. e.g. 2026-01-15T10:00:00Z
+              </p>
             </div>
 
             <div

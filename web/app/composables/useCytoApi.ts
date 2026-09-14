@@ -113,6 +113,8 @@ export interface Factors {
     tenure_days: number
     telemetry_cadence_proxy: number
     battery_stress_profile?: number
+    estimated_swap_fee_burden_kes?: number
+    swap_fee_burden_rri_adjustment?: number
     financing_model?: string
   }
 }
@@ -203,20 +205,8 @@ export function useCytoApi() {
   // API (see web/server/routes/v1/[...].ts), so no API host is embedded here.
   const base = ''
 
-  function apiKey(): string {
-    if (import.meta.client) {
-      return localStorage.getItem('cyto_api_key') || ''
-    }
-    return ''
-  }
-
   function headers(extra: Record<string, string> = {}): Record<string, string> {
-    const h: Record<string, string> = { ...extra }
-    const key = apiKey()
-    if (key) {
-      h.Authorization = `Bearer ${key}`
-    }
-    return h
+    return { ...extra }
   }
 
   return {

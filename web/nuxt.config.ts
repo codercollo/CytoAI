@@ -13,6 +13,7 @@ export default defineNuxtConfig({
     // same-origin /v1/* requests here. The browser bundle never sees this
     // value, so the frontend never hardcodes an API host.
     apiBase: process.env.NUXT_API_BASE || 'http://localhost:8080',
+    demoPartnerApiKey: process.env.CYTOAI_DEMO_PARTNER_API_KEY || '',
   },
   app: {
     head: {
