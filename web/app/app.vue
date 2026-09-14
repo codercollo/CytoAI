@@ -109,6 +109,28 @@
             </svg>
             Data Ingestion
           </NuxtLink>
+
+          <NuxtLink
+            to="/developers"
+            exact-active-class="bg-indigo-600/10 text-indigo-400 border-indigo-500/50!"
+            class="flex items-center gap-2 sm:gap-3 px-3 py-2 sm:py-2.5 rounded-lg text-xs sm:text-sm text-slate-400 hover:bg-slate-800/50 hover:text-slate-200 transition-colors border border-transparent font-medium shrink-0 whitespace-nowrap"
+          >
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke-width="1.5"
+              stroke="currentColor"
+              class="w-4 h-4 sm:w-5 sm:h-5 shrink-0"
+            >
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                d="M17.25 6.75 22.5 12l-5.25 5.25m-10.5 0L1.5 12l5.25-5.25m7.5-3-4.5 16.5"
+              />
+            </svg>
+            API Access
+          </NuxtLink>
         </nav>
       </div>
     </aside>
