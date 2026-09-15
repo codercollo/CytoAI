@@ -70,6 +70,18 @@ jobs:
     needs: build-and-push
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v4
+
+      - name: Sync migrations to VPS
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.CONTABO_HOST }}
+          username: ${{ secrets.CONTABO_USER }}
+          key: ${{ secrets.CONTABO_SSH_KEY }}
+          source: "internal/db/migrations/*"
+          target: "/opt/cytoai/internal/db/migrations"
+          strip_components: 2
+
       - name: Deploy to Contabo VPS
         uses: appleboy/ssh-action@v1.0.3
         with:
